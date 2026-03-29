@@ -1,0 +1,12 @@
+build/
+imgui.ini
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.user
+*.sln
+*.vcxproj*
