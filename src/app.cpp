@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 
@@ -90,6 +91,42 @@ std::string buildLiveListQuery(const std::string& station, int year, int month, 
     else
         query += "&max-keys=1000";
     return query;
+}
+
+std::string trimCopy(std::string text) {
+    auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+    while (!text.empty() && isSpace((unsigned char)text.front()))
+        text.erase(text.begin());
+    while (!text.empty() && isSpace((unsigned char)text.back()))
+        text.pop_back();
+    return text;
+}
+
+std::string normalizeStationCode(std::string station) {
+    station = trimCopy(std::move(station));
+    std::transform(station.begin(), station.end(), station.begin(),
+                   [](unsigned char c) { return (char)std::toupper(c); });
+    return station;
+}
+
+int findStationIndexByCode(const std::string& station) {
+    for (int i = 0; i < NUM_NEXRAD_STATIONS; i++) {
+        if (station == NEXRAD_STATIONS[i].icao)
+            return i;
+    }
+    return -1;
+}
+
+std::string makeArchiveRangeLabel(const std::string& station,
+                                  int year, int month, int day,
+                                  int startHour, int startMin,
+                                  int endHour, int endMin) {
+    char buffer[96];
+    std::snprintf(buffer, sizeof(buffer),
+                  "Archive %04d-%02d-%02d %02d:%02d-%02d:%02d UTC",
+                  year, month, day,
+                  startHour, startMin, endHour, endMin);
+    return buffer;
 }
 
 int findLowestSweepIndex(const std::vector<PrecomputedSweep>& sweeps) {
@@ -1739,6 +1776,7 @@ void App::rerenderAll() {
 void App::loadHistoricEvent(int idx) {
     m_historicMode = true;
     m_autoTrackStation = false;
+    m_showAll = false;
     m_snapshotMode = false;
     m_snapshotLowestSweepOnly = false;
     m_snapshotLabel.clear();
@@ -1755,6 +1793,49 @@ void App::loadHistoricEvent(int idx) {
         m_viewport.center_lon = HISTORIC_EVENTS[idx].center_lon;
         m_viewport.zoom = HISTORIC_EVENTS[idx].zoom;
     }
+}
+
+bool App::loadArchiveRange(const std::string& station,
+                           int year, int month, int day,
+                           int startHour, int startMin,
+                           int endHour, int endMin) {
+    const std::string stationCode = normalizeStationCode(station);
+    const int stationIdx = findStationIndexByCode(stationCode);
+    if (stationIdx < 0) {
+        std::printf("Archive request rejected: unknown station '%s'\n", station.c_str());
+        return false;
+    }
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month) ||
+        startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 ||
+        startMin < 0 || startMin > 59 || endMin < 0 || endMin > 59) {
+        std::printf("Archive request rejected: invalid date/time range\n");
+        return false;
+    }
+
+    m_lastRefresh = std::chrono::steady_clock::now();
+    m_historic.cancel();
+    m_historicMode = true;
+    m_autoTrackStation = false;
+    m_showAll = false;
+    m_snapshotMode = false;
+    m_snapshotLowestSweepOnly = false;
+    m_snapshotLabel.clear();
+    m_snapshotTimestampIso.clear();
+    m_lastHistoricFrame = -1;
+    m_volumeBuilt = false;
+    m_volumeStation = -1;
+    invalidateFrameCache(true);
+    m_warnings.clearHistoric();
+
+    const auto& site = NEXRAD_STATIONS[stationIdx];
+    m_viewport.center_lat = site.lat;
+    m_viewport.center_lon = site.lon;
+    m_viewport.zoom = 180.0;
+
+    const std::string label = makeArchiveRangeLabel(stationCode, year, month, day,
+                                                    startHour, startMin, endHour, endMin);
+    return m_historic.loadRange(label, stationCode, year, month, day,
+                                startHour, startMin, endHour, endMin);
 }
 
 void App::uploadHistoricFrame(int frameIdx) {

@@ -160,6 +160,21 @@ HistoricLoader::~HistoricLoader() {
     cancel();
 }
 
+std::string HistoricLoader::currentLabel() const {
+    std::lock_guard<std::mutex> lock(m_metaMutex);
+    return m_currentLabel;
+}
+
+std::string HistoricLoader::currentStation() const {
+    std::lock_guard<std::mutex> lock(m_metaMutex);
+    return m_currentStation;
+}
+
+std::string HistoricLoader::lastError() const {
+    std::lock_guard<std::mutex> lock(m_metaMutex);
+    return m_lastError;
+}
+
 void HistoricLoader::joinWorker() {
     if (m_worker.joinable() && m_worker.get_id() != std::this_thread::get_id())
         m_worker.join();
@@ -191,15 +206,25 @@ const RadarFrame* HistoricLoader::frame(int idx) const {
     return m_frames[idx] ? m_frames[idx].get() : nullptr;
 }
 
-void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
-    if (eventIdx < 0 || eventIdx >= NUM_HISTORIC_EVENTS) return;
-
+bool HistoricLoader::startLoad(const std::string& label,
+                               const std::string& station,
+                               int year, int month, int day,
+                               int start_hour, int start_min,
+                               int end_hour, int end_min,
+                               const HistoricEvent* eventRef,
+                               ProgressCallback cb) {
     cancel();
 
-    m_event = &HISTORIC_EVENTS[eventIdx];
+    m_event = eventRef;
     m_loading = true;
     m_loaded = false;
     m_cancel = false;
+    {
+        std::lock_guard<std::mutex> lock(m_metaMutex);
+        m_currentLabel = label;
+        m_currentStation = station;
+        m_lastError.clear();
+    }
     {
         std::lock_guard<std::mutex> lock(m_framesMutex);
         m_frames.clear();
@@ -210,11 +235,11 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
     m_playing = false;
     m_accumulator = 0.0f;
 
-    const HistoricEvent* event = m_event.load();
-    m_worker = std::thread([this, cb, event]() {
-        const auto& ev = *event;
-        printf("Loading historic event: %s (%s %04d-%02d-%02d)\n",
-               ev.name, ev.station, ev.year, ev.month, ev.day);
+    m_worker = std::thread([this, cb, label, station, year, month, day,
+                            start_hour, start_min, end_hour, end_min]() {
+        printf("Loading archive range: %s (%s %04d-%02d-%02d %02d:%02d-%02d:%02d UTC)\n",
+               label.c_str(), station.c_str(), year, month, day,
+               start_hour, start_min, end_hour, end_min);
 
         std::shared_ptr<Downloader> downloader;
         auto finish = [this, &downloader](bool loaded) {
@@ -225,17 +250,24 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
             m_loaded = loaded && !m_cancel.load();
             m_loading = false;
         };
+        auto setError = [this](std::string error) {
+            std::lock_guard<std::mutex> lock(m_metaMutex);
+            m_lastError = std::move(error);
+        };
 
         // List all files for this station/date
         std::string listPath = "/?list-type=2&prefix=" +
-            std::to_string(ev.year) + "/" +
-            (ev.month < 10 ? "0" : "") + std::to_string(ev.month) + "/" +
-            (ev.day < 10 ? "0" : "") + std::to_string(ev.day) + "/" +
-            std::string(ev.station) + "/&max-keys=1000";
+            std::to_string(year) + "/" +
+            (month < 10 ? "0" : "") + std::to_string(month) + "/" +
+            (day < 10 ? "0" : "") + std::to_string(day) + "/" +
+            station + "/&max-keys=1000";
 
         auto listResult = Downloader::httpGet(NEXRAD_HOST, listPath);
         if (!listResult.success) {
             printf("Failed to list files: %s\n", listResult.error.c_str());
+            setError(listResult.error.empty()
+                ? "Archive listing failed"
+                : "Archive listing failed: " + listResult.error);
             finish(false);
             return;
         }
@@ -248,22 +280,24 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
         for (const auto& f : files) {
             int hh = 0, mm = 0, ss = 0;
             if (!extractFilenameTime(filenameFromKey(f.key), hh, mm, ss)) continue;
-            if (inHistoricWindow(ev, hh, mm))
+            HistoricEvent requestView = {"", "", year, month, day, start_hour, start_min, end_hour, end_min,
+                                         0.0f, 0.0f, 0.0f, ""};
+            if (inHistoricWindow(requestView, hh, mm))
                 filtered.push_back(f);
         }
 
         // Also check next day for overnight events
-        if (ev.end_hour < ev.start_hour) {
-            int nextYear = ev.year;
-            int nextMonth = ev.month;
-            int nextDay = ev.day;
+        if (end_hour < start_hour || (end_hour == start_hour && end_min < start_min)) {
+            int nextYear = year;
+            int nextMonth = month;
+            int nextDay = day;
             shiftDate(nextYear, nextMonth, nextDay, 1);
 
             std::string listPath2 = "/?list-type=2&prefix=" +
                 std::to_string(nextYear) + "/" +
                 (nextMonth < 10 ? "0" : "") + std::to_string(nextMonth) + "/" +
                 (nextDay < 10 ? "0" : "") + std::to_string(nextDay) + "/" +
-                std::string(ev.station) + "/&max-keys=1000";
+                station + "/&max-keys=1000";
 
             auto list2 = Downloader::httpGet(NEXRAD_HOST, listPath2);
             if (list2.success) {
@@ -272,7 +306,7 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
                 for (const auto& f : files2) {
                     int hh = 0, mm = 0, ss = 0;
                     if (!extractFilenameTime(filenameFromKey(f.key), hh, mm, ss)) continue;
-                    if (hh * 60 + mm <= ev.end_hour * 60 + ev.end_min)
+                    if (hh * 60 + mm <= end_hour * 60 + end_min)
                         filtered.push_back(f);
                 }
             }
@@ -280,6 +314,7 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
 
         if (filtered.empty()) {
             printf("No files found in time range\n");
+            setError("No Level 2 files found in the requested time range");
             finish(false);
             return;
         }
@@ -354,9 +389,46 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
             return;
         }
 
+        int readyFrames = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_framesMutex);
+            for (const auto& frame : m_frames)
+                readyFrames += frame ? 1 : 0;
+        }
+
+        if (readyFrames <= 0) {
+            setError("Archive download completed, but no valid frames were parsed");
+            finish(false);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_metaMutex);
+            m_lastError.clear();
+        }
         printf("\nHistoric event loaded: %d frames ready\n", m_downloadedFrames.load());
-        finish(m_downloadedFrames.load() > 0);
+        finish(true);
     });
+    return true;
+}
+
+void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
+    if (eventIdx < 0 || eventIdx >= NUM_HISTORIC_EVENTS) return;
+    const auto& ev = HISTORIC_EVENTS[eventIdx];
+    startLoad(ev.name, ev.station, ev.year, ev.month, ev.day,
+              ev.start_hour, ev.start_min, ev.end_hour, ev.end_min,
+              &ev, std::move(cb));
+}
+
+bool HistoricLoader::loadRange(const std::string& label,
+                               const std::string& station,
+                               int year, int month, int day,
+                               int start_hour, int start_min,
+                               int end_hour, int end_min,
+                               ProgressCallback cb) {
+    return startLoad(label, station, year, month, day,
+                     start_hour, start_min, end_hour, end_min,
+                     nullptr, std::move(cb));
 }
 
 void HistoricLoader::update(float dt) {

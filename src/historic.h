@@ -79,6 +79,12 @@ public:
 
     // Start downloading frames for an event (async)
     void loadEvent(int eventIdx, ProgressCallback cb = nullptr);
+    bool loadRange(const std::string& label,
+                   const std::string& station,
+                   int year, int month, int day,
+                   int start_hour, int start_min,
+                   int end_hour, int end_min,
+                   ProgressCallback cb = nullptr);
 
     // Cancel current download
     void cancel();
@@ -89,6 +95,9 @@ public:
     int  totalFrames() const { return m_totalFrames.load(); }
     int  downloadedFrames() const { return m_downloadedFrames.load(); }
     const HistoricEvent* currentEvent() const { return m_event.load(); }
+    std::string currentLabel() const;
+    std::string currentStation() const;
+    std::string lastError() const;
 
     // Frame access
     int numFrames() const;
@@ -107,13 +116,24 @@ public:
 
 private:
     void joinWorker();
+    bool startLoad(const std::string& label,
+                   const std::string& station,
+                   int year, int month, int day,
+                   int start_hour, int start_min,
+                   int end_hour, int end_min,
+                   const HistoricEvent* eventRef,
+                   ProgressCallback cb);
 
     std::vector<std::shared_ptr<const RadarFrame>> m_frames;
     mutable std::mutex m_framesMutex;
     std::mutex m_workerMutex;
+    mutable std::mutex m_metaMutex;
     std::thread m_worker;
     std::shared_ptr<class Downloader> m_downloader;
     std::atomic<const HistoricEvent*> m_event{nullptr};
+    std::string m_currentLabel;
+    std::string m_currentStation;
+    std::string m_lastError;
     std::atomic<int> m_downloadedFrames{0};
     std::atomic<int> m_totalFrames{0};
     std::atomic<bool> m_loading{false};

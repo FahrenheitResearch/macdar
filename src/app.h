@@ -154,6 +154,10 @@ public:
     // Trigger refresh from AWS
     void refreshData();
     void loadMarch302025Snapshot(bool lowestSweepOnly = false);
+    bool loadArchiveRange(const std::string& station,
+                          int year, int month, int day,
+                          int startHour, int startMin,
+                          int endHour, int endMin);
     bool snapshotMode() const { return m_snapshotMode; }
     const char* snapshotLabel() const { return m_snapshotLabel.c_str(); }
     bool snapshotLowestSweepOnly() const { return m_snapshotLowestSweepOnly; }

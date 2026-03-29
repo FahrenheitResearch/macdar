@@ -2,6 +2,7 @@
 #include "app.h"
 #include "nexrad/products.h"
 #include "nexrad/stations.h"
+#include "net/aws_nexrad.h"
 #include "historic.h"
 #include "net/warnings.h"
 #include "data/us_boundaries.h"
@@ -23,6 +24,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <ctime>
 
 namespace ui {
 
@@ -56,6 +58,11 @@ ImVec4 rgbaToImVec4(uint32_t color) {
 uint32_t imVec4ToRgba(const ImVec4& color) {
     auto chan = [](float v) { return (uint32_t)std::clamp((int)std::lround(v * 255.0f), 0, 255); };
     return chan(color.x) | (chan(color.y) << 8) | (chan(color.z) << 16) | (chan(color.w) << 24);
+}
+
+void copyTextBuffer(char* dst, size_t dstCap, const char* src) {
+    if (!dst || dstCap == 0) return;
+    std::snprintf(dst, dstCap, "%s", src ? src : "");
 }
 
 void editWarningColor(const char* label, uint32_t& color) {
@@ -94,7 +101,7 @@ bool browseForColorTable(char* path, size_t pathCapacity) {
     if (!path || pathCapacity == 0) return false;
 
     char fileBuf[1024] = "";
-    strncpy_s(fileBuf, sizeof(fileBuf), path, _TRUNCATE);
+    copyTextBuffer(fileBuf, sizeof(fileBuf), path);
 
     static const char kFilter[] =
         "Radar Color Tables (*.pal;*.ct;*.ct3;*.tbl;*.txt)\0*.pal;*.ct;*.ct3;*.tbl;*.txt\0"
@@ -113,13 +120,52 @@ bool browseForColorTable(char* path, size_t pathCapacity) {
     if (!GetOpenFileNameA(&ofn))
         return false;
 
-    strncpy_s(path, pathCapacity, fileBuf, _TRUNCATE);
+    copyTextBuffer(path, pathCapacity, fileBuf);
     return true;
 #else
     (void)path;
     (void)pathCapacity;
     return false;
 #endif
+}
+
+bool parseArchiveDate(const char* text, int& year, int& month, int& day) {
+    if (!text) return false;
+    return std::sscanf(text, "%d-%d-%d", &year, &month, &day) == 3;
+}
+
+bool parseArchiveTime(const char* text, int& hour, int& minute) {
+    if (!text) return false;
+    return std::sscanf(text, "%d:%d", &hour, &minute) == 2;
+}
+
+void seedArchiveInputs(char* dateText, size_t dateCap,
+                       char* startText, size_t startCap,
+                       char* endText, size_t endCap) {
+    static bool seeded = false;
+    if (seeded) return;
+    seeded = true;
+
+    std::time_t now = std::time(nullptr);
+    std::tm utc = {};
+#ifdef _WIN32
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+
+    int startYear = utc.tm_year + 1900;
+    int startMonth = utc.tm_mon + 1;
+    int startDay = utc.tm_mday;
+    int startHour = utc.tm_hour - 1;
+    if (startHour < 0) {
+        startHour += 24;
+        shiftDate(startYear, startMonth, startDay, -1);
+    }
+
+    std::snprintf(dateText, dateCap, "%04d-%02d-%02d", startYear, startMonth, startDay);
+    std::snprintf(startText, startCap, "%02d:%02d", startHour, utc.tm_min);
+    std::snprintf(endText, endCap, "%02d:%02d", utc.tm_hour, utc.tm_min);
 }
 
 void ensureDockLayout() {
@@ -190,6 +236,21 @@ void render(App& app) {
     const auto warnings = app.currentWarnings();
     static char palettePath[512] = "";
     static char pollingLinkUrl[1024] = "";
+    static char archiveStation[8] = "";
+    static char archiveDate[16] = "";
+    static char archiveStart[8] = "";
+    static char archiveEnd[8] = "";
+    static std::string archiveStatus;
+
+    seedArchiveInputs(archiveDate, sizeof(archiveDate),
+                      archiveStart, sizeof(archiveStart),
+                      archiveEnd, sizeof(archiveEnd));
+    if (!archiveStation[0] && !app.m_historicMode) {
+        const int activeIdx = app.activeStation();
+        if (activeIdx >= 0 && activeIdx < NUM_NEXRAD_STATIONS)
+            copyTextBuffer(archiveStation, sizeof(archiveStation),
+                           NEXRAD_STATIONS[activeIdx].icao);
+    }
 
     ImGuiID dockspaceId = ImGui::GetID("cursdar2.main_dockspace");
     ImGui::DockSpaceOverViewport(dockspaceId, ImGui::GetMainViewport(),
@@ -260,6 +321,16 @@ void render(App& app) {
                     }
                 }
             }
+            if (slat == 0.0f && slon == 0.0f) {
+                const std::string histStation = app.m_historic.currentStation();
+                for (int i = 0; i < NUM_NEXRAD_STATIONS; i++) {
+                    if (histStation == NEXRAD_STATIONS[i].icao) {
+                        slat = NEXRAD_STATIONS[i].lat;
+                        slon = NEXRAD_STATIONS[i].lon;
+                        break;
+                    }
+                }
+            }
         } else if (asi >= 0 && asi < (int)stations.size()) {
             const auto& st = stations[asi];
             slat = st.display_lat;
@@ -323,12 +394,15 @@ void render(App& app) {
     ImGui::SameLine(88);
 
     int asi = app.activeStation();
-    if (app.m_historicMode && app.m_historic.currentEvent()) {
-        auto* ev = app.m_historic.currentEvent();
+    if (app.m_historicMode) {
+        const std::string histStation = app.m_historic.currentStation();
+        const std::string histLabel = app.m_historic.currentLabel();
         auto* fr = app.m_historic.frame(app.m_historic.currentFrame());
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%s", ev->station);
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%s",
+                           histStation.empty() ? "---" : histStation.c_str());
         ImGui::SameLine(168);
-        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "%s", ev->name);
+        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "%s",
+                           histLabel.empty() ? "Archive Playback" : histLabel.c_str());
         ImGui::SameLine(430);
         ImGui::Text("%s UTC", fr ? fr->timestamp.c_str() : "--:--");
     } else {
@@ -537,11 +611,70 @@ void render(App& app) {
 
     ImGui::Separator();
 
+    if (ImGui::CollapsingHeader("Archive Downloads", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::TextWrapped("Download arbitrary Level 2 volume ranges for one radar. Times are UTC; if the end time is earlier than the start time, playback rolls into the next UTC day.");
+        ImGui::SetNextItemWidth(92);
+        ImGui::InputText("Station", archiveStation, sizeof(archiveStation));
+        ImGui::SameLine();
+        if (ImGui::Button("Use Active Site", ImVec2(110, 24))) {
+            const int activeIdx = app.activeStation();
+            if (activeIdx >= 0 && activeIdx < NUM_NEXRAD_STATIONS)
+                copyTextBuffer(archiveStation, sizeof(archiveStation),
+                               NEXRAD_STATIONS[activeIdx].icao);
+        }
+        ImGui::SetNextItemWidth(110);
+        ImGui::InputText("UTC Date", archiveDate, sizeof(archiveDate));
+        ImGui::SetNextItemWidth(76);
+        ImGui::InputText("Start", archiveStart, sizeof(archiveStart));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(76);
+        ImGui::InputText("End", archiveEnd, sizeof(archiveEnd));
+        if (ImGui::Button("Download Range", ImVec2(210, 24))) {
+            int year = 0, month = 0, day = 0;
+            int startHour = 0, startMin = 0;
+            int endHour = 0, endMin = 0;
+
+            for (char& c : archiveStation)
+                c = (char)std::toupper((unsigned char)c);
+
+            if (!archiveStation[0]) {
+                archiveStatus = "Enter a 4-letter radar site ICAO.";
+            } else if (!parseArchiveDate(archiveDate, year, month, day)) {
+                archiveStatus = "Date must use YYYY-MM-DD in UTC.";
+            } else if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+                archiveStatus = "Date is outside the valid calendar range.";
+            } else if (!parseArchiveTime(archiveStart, startHour, startMin) ||
+                       !parseArchiveTime(archiveEnd, endHour, endMin) ||
+                       startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 ||
+                       startMin < 0 || startMin > 59 || endMin < 0 || endMin > 59) {
+                archiveStatus = "Times must use HH:MM in UTC.";
+            } else if (app.loadArchiveRange(archiveStation, year, month, day,
+                                            startHour, startMin, endHour, endMin)) {
+                archiveStatus = "Downloading archive range...";
+            } else {
+                archiveStatus = "Archive request rejected. Check the radar site and UTC range.";
+            }
+        }
+        if (!archiveStatus.empty())
+            ImGui::TextWrapped("%s", archiveStatus.c_str());
+        const std::string histError = app.m_historic.lastError();
+        if (!histError.empty())
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", histError.c_str());
+        if (app.m_historicMode) {
+            ImGui::Separator();
+            if (ImGui::Button("Back to Live", ImVec2(210, 24)))
+                app.refreshData();
+        }
+    }
+
+    ImGui::Separator();
+
     if (ImGui::CollapsingHeader("Historic Cases")) {
         for (int i = 0; i < NUM_HISTORIC_EVENTS; i++) {
             auto& ev = HISTORIC_EVENTS[i];
             if (ImGui::Button(ev.name, ImVec2(210, 22))) {
                 app.loadHistoricEvent(i);
+                archiveStatus.clear();
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip();
@@ -554,12 +687,6 @@ void render(App& app) {
             }
         }
 
-        if (app.m_historicMode) {
-            ImGui::Separator();
-            if (ImGui::Button("Back to Live", ImVec2(210, 24))) {
-                app.refreshData();
-            }
-        }
     }
 
     // (Demo packs removed)
@@ -573,6 +700,10 @@ void render(App& app) {
         ImGui::Begin("Historic Timeline");
 
         if (hist.loading()) {
+            const std::string histStation = hist.currentStation();
+            const std::string histLabel = hist.currentLabel();
+            if (!histStation.empty() || !histLabel.empty())
+                ImGui::Text("%s | %s", histStation.c_str(), histLabel.c_str());
             ImGui::TextColored(ImVec4(1, 0.8f, 0.2f, 1),
                                "Downloading: %d / %d frames",
                                hist.downloadedFrames(), hist.totalFrames());
@@ -581,10 +712,10 @@ void render(App& app) {
             ImGui::ProgressBar(prog, ImVec2(-1, 14));
         } else if (hist.loaded() && hist.numFrames() > 0) {
             // Event name + current time
-            const auto* ev = hist.currentEvent();
+            const std::string histLabel = hist.currentLabel();
             const auto* fr = hist.frame(hist.currentFrame());
             ImGui::Text("%s  |  %s UTC",
-                        ev ? ev->name : "???",
+                        histLabel.empty() ? "Archive Playback" : histLabel.c_str(),
                         fr ? fr->timestamp.c_str() : "--:--:--");
 
             // Play/pause + speed
@@ -603,6 +734,12 @@ void render(App& app) {
                 hist.setFrame(frame);
                 app.m_lastHistoricFrame = -1; // force re-upload
             }
+        } else {
+            const std::string histError = hist.lastError();
+            if (!histError.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", histError.c_str());
+            else
+                ImGui::TextDisabled("No archive frames loaded.");
         }
 
         ImGui::End();
