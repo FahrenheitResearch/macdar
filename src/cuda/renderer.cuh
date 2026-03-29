@@ -58,6 +58,9 @@ namespace gpu {
 
 void init();
 void shutdown();
+void setColorTable(int product, const uint32_t* rgba256);
+void resetColorTable(int product);
+void resetAllColorTables();
 
 void allocateStation(int station_idx, const GpuStationInfo& info);
 void freeStation(int station_idx);

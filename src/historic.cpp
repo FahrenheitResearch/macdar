@@ -4,15 +4,19 @@
 #include "nexrad/products.h"
 #include "nexrad/stations.h"
 #include <algorithm>
+#include <cctype>
 #include <thread>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <ctime>
 #include <memory>
 
 // ── Download and parse all frames for a historic event ──────
 
 namespace {
+
+std::string filenameFromKey(const std::string& key);
 
 bool extractFilenameTime(const std::string& fname, int& hh, int& mm, int& ss) {
     const size_t dateEnd = fname.find('_');
@@ -25,6 +29,41 @@ bool extractFilenameTime(const std::string& fname, int& hh, int& mm, int& ss) {
     mm = std::stoi(timeStr.substr(2, 2));
     ss = std::stoi(timeStr.substr(4, 2));
     return true;
+}
+
+bool extractKeyDateTime(const std::string& key, int& year, int& month, int& day,
+                        int& hh, int& mm, int& ss) {
+    if (key.size() < 10) return false;
+    if (!std::isdigit((unsigned char)key[0]) || !std::isdigit((unsigned char)key[1]) ||
+        !std::isdigit((unsigned char)key[2]) || !std::isdigit((unsigned char)key[3]) ||
+        key[4] != '/' ||
+        !std::isdigit((unsigned char)key[5]) || !std::isdigit((unsigned char)key[6]) ||
+        key[7] != '/' ||
+        !std::isdigit((unsigned char)key[8]) || !std::isdigit((unsigned char)key[9])) {
+        return false;
+    }
+
+    year = std::stoi(key.substr(0, 4));
+    month = std::stoi(key.substr(5, 2));
+    day = std::stoi(key.substr(8, 2));
+    const size_t slash = key.rfind('/');
+    const std::string fname = (slash != std::string::npos) ? key.substr(slash + 1) : key;
+    return extractFilenameTime(fname, hh, mm, ss);
+}
+
+int64_t makeUtcEpoch(int year, int month, int day, int hh, int mm, int ss) {
+    std::tm tm = {};
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hh;
+    tm.tm_min = mm;
+    tm.tm_sec = ss;
+#ifdef _WIN32
+    return static_cast<int64_t>(_mkgmtime(&tm));
+#else
+    return static_cast<int64_t>(timegm(&tm));
+#endif
 }
 
 bool inHistoricWindow(const HistoricEvent& ev, int hh, int mm) {
@@ -82,17 +121,24 @@ void populateSweepData(const ParsedSweep& sweep, PrecomputedSweep& pc) {
     }
 }
 
-std::shared_ptr<RadarFrame> buildFrame(const ParsedRadarData& parsed, const std::string& fname) {
+std::shared_ptr<RadarFrame> buildFrame(const ParsedRadarData& parsed, const std::string& key) {
     auto frame = std::make_shared<RadarFrame>();
-    frame->filename = fname;
+    frame->filename = filenameFromKey(key);
     frame->station_lat = parsed.station_lat;
     frame->station_lon = parsed.station_lon;
 
+    int year = 0, month = 0, day = 0;
     int hh = 0, mm = 0, ss = 0;
-    if (extractFilenameTime(fname, hh, mm, ss)) {
+    if (extractKeyDateTime(key, year, month, day, hh, mm, ss)) {
         char ts[16];
         std::snprintf(ts, sizeof(ts), "%02d:%02d:%02d", hh, mm, ss);
         frame->timestamp = ts;
+
+        char iso[32];
+        std::snprintf(iso, sizeof(iso), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                      year, month, day, hh, mm, ss);
+        frame->valid_time_iso = iso;
+        frame->valid_time_epoch = makeUtcEpoch(year, month, day, hh, mm, ss);
     }
 
     frame->sweeps.resize(parsed.sweeps.size());
@@ -280,8 +326,7 @@ void HistoricLoader::loadEvent(int eventIdx, ProgressCallback cb) {
                     }
 
                     // Extract timestamp from key
-                    const std::string fname = filenameFromKey(id);
-                    auto frame = buildFrame(parsed, fname);
+                    auto frame = buildFrame(parsed, id);
                     {
                         std::lock_guard<std::mutex> lock(m_framesMutex);
                         if (idx >= 0 && idx < (int)m_frames.size()) {

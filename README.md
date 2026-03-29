@@ -1,36 +1,88 @@
 # cursdar2
 
-`cursdar2` is the next-generation CUDA radar workstation being built on top of the fast Level 2 ingest and rendering work from `cursdar`.
+`cursdar2` is a CUDA-native NEXRAD workstation focused on fast live Level 2 ingest, responsive 2D/3D radar rendering, archive review, and warning-overlay analysis.
 
-The goal is an operator-grade desktop radar application with the same responsiveness as the current CUDA engine, but with a more deliberate workstation layout, cleaner browsing workflow, and room for deeper feature growth.
+It is being built as a standalone successor to `cursdar`: same GPU-first mentality, much cleaner operator workflow, and a repo that can evolve independently.
 
-## What is implemented now
+## Highlights
 
-- Standalone source tree and build target inside `cursdar2/`
-- Live AWS Level 2 ingest for the NEXRAD network
-- Single-station 2D view and national mosaic rendering
-- 3D volume rendering and draggable cross-sections
-- Historic tornado case playback
-- Archive snapshot loading for the March 30, 2025 all-site case
-- NWS warning polygon overlays
-- Storm-relative velocity controls
-- Experimental TDS, hail, and mesocyclone markers
-- Docked operator UI with:
-  - station browser
-  - station lock / auto-track toggle
-  - inspector pane
-  - warning list pane
-  - historic timeline pane
+- Live NEXRAD Level 2 ingest from AWS
+- Fast single-site 2D rendering with working tilt stepping
+- National mosaic rendering across the radar network
+- Real-time 3D volume mode
+- Draggable vertical cross-sections
+- Historic case playback with frame scrubbing
+- Archive snapshot loading, including the March 30, 2025 multi-site case
+- Live and historic warning polygons, watches, and related alert overlays
+- Highly configurable warning styling:
+  - per-category toggles
+  - outline/fill controls
+  - opacity and line scaling
+  - custom colors
+- Experimental storm interrogation overlays:
+  - TDS markers
+  - hail markers
+  - mesocyclone / TVS markers
+- Storm-relative velocity mode
+- GR / RadarScope-style color table import
+- Early GR-style polling link intake
+- Docked workstation UI with station browser, inspector, warnings panel, and historic timeline
 
-## Current direction
+## Live Data Model
 
-`cursdar2` is no longer just a thin wrapper around the parent target. It now carries its own local copies of the app, CUDA renderer, ingest pipeline, UI, and support code so it can evolve independently.
+`cursdar2` now uses tiered live polling instead of a blunt full-network refresh loop.
 
-The immediate focus is:
+- Active station: fast polling for newest available scans
+- In-view stations: medium cadence polling
+- Background stations: slower maintenance polling
+- Warning overlays: separate live polling loop
 
-- tighten the workstation workflow
-- expand tooling around archive review and warning analysis
-- keep the fast CUDA rendering path intact while adding higher-level features
+Once a station has already loaded a scan, the app uses incremental S3 listing against the last known volume key instead of re-listing the entire day each time. That keeps the hot path much lighter while still picking up newly published volumes quickly.
+
+Practical note: display latency is still bounded by upstream publication. The app can only render a scan once NOAA/AWS has published a complete object.
+
+## Current Feature Surface
+
+Implemented now:
+
+- Standalone `cursdar2` source tree and build target
+- Live single-site view
+- Live national mosaic
+- 3D volume rendering
+- Cross-sections
+- Tilt browsing in single-radar mode
+- Archive playback
+- Archive snapshot loading
+- Live warning overlays
+- Historic warning overlays matched to archive timestamps
+- Warning customization controls
+- Color table import and per-product reset
+- Polling-link fetch and inspection
+- CUDA-backed rendering pipeline
+
+Not finished yet:
+
+- Full GR2 feature parity
+- Full placefile rendering
+- Measurement / interrogation tools
+- Broader polling-link product support
+- Long-duration operational validation across many live weather events
+
+## Build Requirements
+
+### Windows
+
+- NVIDIA GPU with CUDA support
+- CUDA Toolkit
+- Visual Studio 2022 Build Tools
+- Ninja
+
+### Linux
+
+- NVIDIA GPU with CUDA support
+- CUDA Toolkit
+- CMake
+- A recent C++17 compiler
 
 ## Build
 
@@ -40,7 +92,7 @@ The immediate focus is:
 build.bat
 ```
 
-Output:
+Binary output:
 
 ```text
 build/cursdar2.exe
@@ -64,9 +116,16 @@ chmod +x build.sh
 - `S`: toggle storm-relative velocity
 - `R`: refresh live data
 - `Home`: reset to CONUS
-- `Escape`: return to auto-tracking the nearest site
-- `Space`: play/pause historic playback
+- `Escape`: return to auto-track
+- `Space`: play / pause historic playback
 
-## Notes
+## UI Notes
 
-This is still an active build-out, not a finished operational workstation. The CUDA engine is already real; the remaining work is about expanding the surrounding workstation feature set and validating the full workflow under real weather use.
+- The inspector shows the latest scan time for the active site.
+- The warnings panel can show live or historic polygons depending on mode.
+- Color tables can be loaded from the operator console with a file browser.
+- Polling links are currently ingested and inspected, but not yet fully rendered as full GR-style placefile content.
+
+## Status
+
+This is already a real GPU radar workstation, but it is still an active build-out rather than a finished operational replacement for mature commercial software. The fast path is there now; the remaining work is on feature depth, workflow polish, and repeated validation with real events.

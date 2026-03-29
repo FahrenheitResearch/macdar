@@ -32,6 +32,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -75,7 +83,9 @@ add_executable(cursdar2
     src/historic.cpp
     src/nexrad/level2_parser.cpp
     src/net/downloader.cpp
+    src/net/polling_links.cpp
     src/net/warnings.cpp
+    src/render/color_table.cpp
     src/render/gl_interop.cpp
     src/ui/ui.cpp
     src/cuda/renderer.cu
@@ -96,6 +106,7 @@ target_link_libraries(cursdar2 PRIVATE
     imgui
     glfw
     BZip2::BZip2
+    nlohmann_json::nlohmann_json
     CUDA::cudart
 )
 

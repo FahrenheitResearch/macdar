@@ -23,6 +23,8 @@ __constant__ uint32_t c_colorTable[NUM_PRODUCTS][256];
 static cudaTextureObject_t s_colorTextures[NUM_PRODUCTS] = {};
 static cudaArray_t         s_colorArrays[NUM_PRODUCTS] = {};
 static bool                s_colorTexturesCreated = false;
+static uint32_t            s_defaultColorTables[NUM_PRODUCTS][256] = {};
+static uint32_t            s_runtimeColorTables[NUM_PRODUCTS][256] = {};
 
 // Spatial grid in device memory
 static SpatialGrid* d_spatialGrid = nullptr;
@@ -207,8 +209,7 @@ static void generateVelColorTable(uint32_t* table) {
     fillRange(table,  60,  64, mn, mx, 255, 255,   0); // yellow
 }
 
-static void uploadColorTables() {
-    uint32_t tables[NUM_PRODUCTS][256];
+static void buildDefaultColorTables(uint32_t tables[NUM_PRODUCTS][256]) {
     generateRefColorTable(tables[PROD_REF]);
     generateVelColorTable(tables[PROD_VEL]);
 
@@ -289,41 +290,50 @@ static void uploadColorTables() {
     interpolateColor(tables[PROD_PHI], 128, 192, 0,255,0, 255,255,0);
     interpolateColor(tables[PROD_PHI], 192, 255, 255,255,0, 255,0,0);
 
-    CUDA_CHECK(cudaMemcpyToSymbol(c_colorTable, tables, sizeof(tables)));
+}
 
-    // Create CUDA texture objects for hardware-interpolated color lookups
-    for (int p = 0; p < NUM_PRODUCTS; p++) {
-        // Convert RGBA uint32 to float4 for texture
-        float4 texData[256];
-        for (int i = 0; i < 256; i++) {
-            uint32_t c = tables[p][i];
-            texData[i] = make_float4(
-                (float)(c & 0xFF) / 255.0f,
-                (float)((c >> 8) & 0xFF) / 255.0f,
-                (float)((c >> 16) & 0xFF) / 255.0f,
-                (float)((c >> 24) & 0xFF) / 255.0f);
-        }
+static void uploadColorTexture(int product, const uint32_t* table) {
+    if (product < 0 || product >= NUM_PRODUCTS || !table) return;
 
-        // Create CUDA array
+    float4 texData[256];
+    for (int i = 0; i < 256; i++) {
+        uint32_t c = table[i];
+        texData[i] = make_float4(
+            (float)(c & 0xFF) / 255.0f,
+            (float)((c >> 8) & 0xFF) / 255.0f,
+            (float)((c >> 16) & 0xFF) / 255.0f,
+            (float)((c >> 24) & 0xFF) / 255.0f);
+    }
+
+    if (!s_colorTexturesCreated) {
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaMallocArray(&s_colorArrays[p], &desc, 256));
-        CUDA_CHECK(cudaMemcpy2DToArray(s_colorArrays[p], 0, 0, texData,
-                                        256 * sizeof(float4), 256 * sizeof(float4), 1,
-                                        cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMallocArray(&s_colorArrays[product], &desc, 256));
+    }
+    CUDA_CHECK(cudaMemcpy2DToArray(s_colorArrays[product], 0, 0, texData,
+                                    256 * sizeof(float4), 256 * sizeof(float4), 1,
+                                    cudaMemcpyHostToDevice));
 
-        // Create texture object
+    if (!s_colorTexturesCreated) {
         cudaResourceDesc resDesc = {};
         resDesc.resType = cudaResourceTypeArray;
-        resDesc.res.array.array = s_colorArrays[p];
+        resDesc.res.array.array = s_colorArrays[product];
 
         cudaTextureDesc texDesc = {};
         texDesc.addressMode[0] = cudaAddressModeClamp;
-        texDesc.filterMode = cudaFilterModeLinear;  // HW interpolation!
+        texDesc.filterMode = cudaFilterModeLinear;
         texDesc.readMode = cudaReadModeElementType;
-        texDesc.normalizedCoords = 1;               // 0.0-1.0 addressing
+        texDesc.normalizedCoords = 1;
 
-        CUDA_CHECK(cudaCreateTextureObject(&s_colorTextures[p], &resDesc, &texDesc, nullptr));
+        CUDA_CHECK(cudaCreateTextureObject(&s_colorTextures[product], &resDesc, &texDesc, nullptr));
     }
+}
+
+static void uploadColorTables() {
+    buildDefaultColorTables(s_defaultColorTables);
+    memcpy(s_runtimeColorTables, s_defaultColorTables, sizeof(s_runtimeColorTables));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_colorTable, s_runtimeColorTables, sizeof(s_runtimeColorTables)));
+    for (int p = 0; p < NUM_PRODUCTS; p++)
+        uploadColorTexture(p, s_runtimeColorTables[p]);
     s_colorTexturesCreated = true;
 }
 
@@ -599,9 +609,32 @@ void shutdown() {
         for (int p = 0; p < NUM_PRODUCTS; p++) {
             if (s_colorTextures[p]) cudaDestroyTextureObject(s_colorTextures[p]);
             if (s_colorArrays[p]) cudaFreeArray(s_colorArrays[p]);
+            s_colorTextures[p] = 0;
+            s_colorArrays[p] = nullptr;
         }
         s_colorTexturesCreated = false;
     }
+}
+
+void setColorTable(int product, const uint32_t* rgba256) {
+    if (product < 0 || product >= NUM_PRODUCTS || !rgba256) return;
+    memcpy(s_runtimeColorTables[product], rgba256, 256 * sizeof(uint32_t));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_colorTable, s_runtimeColorTables, sizeof(s_runtimeColorTables)));
+    uploadColorTexture(product, s_runtimeColorTables[product]);
+    s_colorTexturesCreated = true;
+}
+
+void resetColorTable(int product) {
+    if (product < 0 || product >= NUM_PRODUCTS) return;
+    setColorTable(product, s_defaultColorTables[product]);
+}
+
+void resetAllColorTables() {
+    memcpy(s_runtimeColorTables, s_defaultColorTables, sizeof(s_runtimeColorTables));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_colorTable, s_runtimeColorTables, sizeof(s_runtimeColorTables)));
+    for (int p = 0; p < NUM_PRODUCTS; p++)
+        uploadColorTexture(p, s_runtimeColorTables[p]);
+    s_colorTexturesCreated = true;
 }
 
 void allocateStation(int idx, const GpuStationInfo& info) {

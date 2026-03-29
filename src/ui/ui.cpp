@@ -5,6 +5,16 @@
 #include "historic.h"
 #include "net/warnings.h"
 #include "data/us_boundaries.h"
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <commdlg.h>
+#endif
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
@@ -35,6 +45,25 @@ bool containsCaseInsensitive(const std::string& haystack, const char* needle) {
     return lhs.find(rhs) != std::string::npos;
 }
 
+ImVec4 rgbaToImVec4(uint32_t color) {
+    return ImVec4(
+        (float)(color & 0xFF) / 255.0f,
+        (float)((color >> 8) & 0xFF) / 255.0f,
+        (float)((color >> 16) & 0xFF) / 255.0f,
+        (float)((color >> 24) & 0xFF) / 255.0f);
+}
+
+uint32_t imVec4ToRgba(const ImVec4& color) {
+    auto chan = [](float v) { return (uint32_t)std::clamp((int)std::lround(v * 255.0f), 0, 255); };
+    return chan(color.x) | (chan(color.y) << 8) | (chan(color.z) << 16) | (chan(color.w) << 24);
+}
+
+void editWarningColor(const char* label, uint32_t& color) {
+    ImVec4 value = rgbaToImVec4(color);
+    if (ImGui::ColorEdit4(label, &value.x, ImGuiColorEditFlags_NoInputs))
+        color = imVec4ToRgba(value);
+}
+
 void centerOnWarning(App& app, const WarningPolygon& warning) {
     if (warning.lats.empty() || warning.lons.empty()) return;
 
@@ -58,6 +87,39 @@ void centerOnWarning(App& app, const WarningPolygon& warning) {
     float zoomLat = (float)app.viewport().height / (spanLat * 3.0f);
     float zoomLon = (float)app.viewport().width / (spanLon * 3.0f);
     app.viewport().zoom = std::max(20.0, std::min((double)std::min(zoomLat, zoomLon), 400.0));
+}
+
+bool browseForColorTable(char* path, size_t pathCapacity) {
+#ifdef _WIN32
+    if (!path || pathCapacity == 0) return false;
+
+    char fileBuf[1024] = "";
+    strncpy_s(fileBuf, sizeof(fileBuf), path, _TRUNCATE);
+
+    static const char kFilter[] =
+        "Radar Color Tables (*.pal;*.ct;*.ct3;*.tbl;*.txt)\0*.pal;*.ct;*.ct3;*.tbl;*.txt\0"
+        "All Files (*.*)\0*.*\0";
+
+    OPENFILENAMEA ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = GetActiveWindow();
+    ofn.lpstrFilter = kFilter;
+    ofn.lpstrFile = fileBuf;
+    ofn.nMaxFile = (DWORD)sizeof(fileBuf);
+    ofn.lpstrTitle = "Open Radar Color Table";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    ofn.lpstrDefExt = "pal";
+
+    if (!GetOpenFileNameA(&ofn))
+        return false;
+
+    strncpy_s(path, pathCapacity, fileBuf, _TRUNCATE);
+    return true;
+#else
+    (void)path;
+    (void)pathCapacity;
+    return false;
+#endif
 }
 
 void ensureDockLayout() {
@@ -125,6 +187,9 @@ void init() {
 void render(App& app) {
     auto& vp = app.viewport();
     const auto stations = app.stations();
+    const auto warnings = app.currentWarnings();
+    static char palettePath[512] = "";
+    static char pollingLinkUrl[1024] = "";
 
     ImGuiID dockspaceId = ImGui::GetID("cursdar2.main_dockspace");
     ImGui::DockSpaceOverViewport(dockspaceId, ImGui::GetMainViewport(),
@@ -252,7 +317,7 @@ void render(App& app) {
     int loaded = app.stationsLoaded();
     int total = app.stationsTotal();
     int downloading = app.stationsDownloading();
-    int warningCount = app.m_historicMode ? 0 : (int)app.m_warnings.getWarnings().size();
+    int warningCount = (int)warnings.size();
 
     ImGui::TextColored(ImVec4(0.90f, 0.96f, 1.0f, 1.0f), "CURSDAR2");
     ImGui::SameLine(88);
@@ -290,13 +355,11 @@ void render(App& app) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.3f, 0.8f, 1.0f, 1.0f), "(%d DL)", downloading);
     }
-    if (!app.m_historicMode) {
+    ImGui::SameLine();
+    ImGui::Text("| Alerts: %d", warningCount);
+    if (!app.m_historicMode && !app.autoTrackStation()) {
         ImGui::SameLine();
-        ImGui::Text("| Warnings: %d", warningCount);
-        if (!app.autoTrackStation()) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "| SITE LOCK");
-        }
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "| SITE LOCK");
     }
 
     ImGui::End();
@@ -413,6 +476,67 @@ void render(App& app) {
     ImGui::Separator();
 
     // ── Historic Events ─────────────────────────────────────
+    if (ImGui::CollapsingHeader("Color Tables", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::TextWrapped("Load GR / RadarScope palette files for the matching radar product.");
+        ImGui::SetNextItemWidth(210);
+        ImGui::InputText("##palette_path", palettePath, sizeof(palettePath));
+        ImGui::SameLine();
+        if (ImGui::Button("Browse...", ImVec2(86, 24))) {
+            if (browseForColorTable(palettePath, sizeof(palettePath)))
+                app.loadColorTableFromFile(palettePath);
+        }
+        if (ImGui::Button("Load Palette", ImVec2(102, 24)))
+            app.loadColorTableFromFile(palettePath);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset Product", ImVec2(102, 24)))
+            app.resetColorTable();
+        ImGui::TextWrapped("%s", app.colorTableStatus().empty()
+            ? "Built-in CUDA palettes are active."
+            : app.colorTableStatus().c_str());
+        const std::string activePalette = app.colorTableLabel(app.activeProduct());
+        if (!activePalette.empty())
+            ImGui::Text("Active %s palette: %s",
+                        PRODUCT_INFO[app.activeProduct()].code, activePalette.c_str());
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::CollapsingHeader("Polling Links")) {
+        ImGui::TextWrapped("Initial GR-style placefile intake: fetch, inspect, and track polling links.");
+        ImGui::SetNextItemWidth(210);
+        ImGui::InputText("##polling_link", pollingLinkUrl, sizeof(pollingLinkUrl));
+        if (ImGui::Button("Add Link", ImVec2(102, 24))) {
+            std::string error;
+            if (!app.m_pollingLinks.addLink(pollingLinkUrl, error))
+                app.m_colorTableStatus = "Polling link failed: " + error;
+            else
+                pollingLinkUrl[0] = '\0';
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh Links", ImVec2(102, 24)))
+            app.m_pollingLinks.refreshAll();
+
+        auto pollingEntries = app.m_pollingLinks.entries();
+        if (pollingEntries.empty()) {
+            ImGui::TextDisabled("No polling links loaded.");
+        } else {
+            for (size_t i = 0; i < pollingEntries.size(); i++) {
+                const auto& entry = pollingEntries[i];
+                ImGui::Separator();
+                ImGui::TextWrapped("%s", entry.title.c_str());
+                ImGui::TextDisabled("%s", entry.url.c_str());
+                ImGui::Text("Polygons %d  Lines %d  Text %d  Icons %d",
+                            entry.polygon_count, entry.line_count, entry.text_count, entry.icon_count);
+                if (!entry.last_error.empty())
+                    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", entry.last_error.c_str());
+                else
+                    ImGui::Text("Last fetch: %s", entry.last_fetch_utc.c_str());
+            }
+        }
+    }
+
+    ImGui::Separator();
+
     if (ImGui::CollapsingHeader("Historic Cases")) {
         for (int i = 0; i < NUM_HISTORIC_EVENTS; i++) {
             auto& ev = HISTORIC_EVENTS[i];
@@ -433,7 +557,7 @@ void render(App& app) {
         if (app.m_historicMode) {
             ImGui::Separator();
             if (ImGui::Button("Back to Live", ImVec2(210, 24))) {
-                app.m_historicMode = false;
+                app.refreshData();
             }
         }
     }
@@ -523,6 +647,8 @@ void render(App& app) {
             ImGui::BeginTooltip();
             ImGui::Text("%s (%s)", NEXRAD_STATIONS[i].name, NEXRAD_STATIONS[i].state);
             ImGui::Text("Lat: %.4f  Lon: %.4f", st.display_lat, st.display_lon);
+            if (!st.latest_scan_utc.empty())
+                ImGui::Text("Latest scan: %s", st.latest_scan_utc.c_str());
             if (st.failed) ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "Error: %s", st.error.c_str());
             if (st.parsed) {
                 ImGui::Text("Sweeps: %d", st.sweep_count);
@@ -560,8 +686,7 @@ void render(App& app) {
                 app.activeProduct() == PROD_VEL ? "m/s" : "dBZ");
     ImGui::Text("Stations: %d/%d loaded", app.stationsLoaded(), app.stationsTotal());
     ImGui::Text("Downloads: %d", app.stationsDownloading());
-    if (!app.m_historicMode)
-        ImGui::Text("Warnings: %d", (int)app.m_warnings.getWarnings().size());
+    ImGui::Text("Alerts: %d", warningCount);
 
     int inspectorStation = app.activeStation();
     if (inspectorStation >= 0 && inspectorStation < (int)stations.size()) {
@@ -574,6 +699,8 @@ void render(App& app) {
                     NEXRAD_STATIONS[inspectorStation].name,
                     NEXRAD_STATIONS[inspectorStation].state);
         ImGui::Text("Lat %.4f  Lon %.4f", st.display_lat, st.display_lon);
+        if (!st.latest_scan_utc.empty())
+            ImGui::Text("Latest scan: %s", st.latest_scan_utc.c_str());
         ImGui::Text("Sweeps: %d", st.sweep_count);
         ImGui::Text("TDS %d  Hail %d  Meso %d",
                     (int)st.detection.tds.size(),
@@ -586,31 +713,63 @@ void render(App& app) {
 
     ImGui::SetNextWindowSize(ImVec2(520, 220), ImGuiCond_FirstUseEver);
     ImGui::Begin("Warnings");
-    if (app.m_historicMode) {
-        ImGui::TextDisabled("Live warnings are hidden during historic playback.");
+    if (ImGui::CollapsingHeader("Display Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Enable Alert Overlays", &app.m_warningOptions.enabled);
+        ImGui::Checkbox("Warnings", &app.m_warningOptions.showWarnings);
+        ImGui::SameLine();
+        ImGui::Checkbox("Watches", &app.m_warningOptions.showWatches);
+        ImGui::SameLine();
+        ImGui::Checkbox("Statements", &app.m_warningOptions.showStatements);
+        ImGui::Checkbox("Advisories", &app.m_warningOptions.showAdvisories);
+        ImGui::SameLine();
+        ImGui::Checkbox("Special Wx Statements", &app.m_warningOptions.showSpecialWeatherStatements);
+        ImGui::Checkbox("Tornado", &app.m_warningOptions.showTornado);
+        ImGui::SameLine();
+        ImGui::Checkbox("Severe", &app.m_warningOptions.showSevere);
+        ImGui::SameLine();
+        ImGui::Checkbox("Fire", &app.m_warningOptions.showFire);
+        ImGui::SameLine();
+        ImGui::Checkbox("Flood", &app.m_warningOptions.showFlood);
+        ImGui::SameLine();
+        ImGui::Checkbox("Marine", &app.m_warningOptions.showMarine);
+        ImGui::Checkbox("Show Fills", &app.m_warningOptions.fillPolygons);
+        ImGui::SameLine();
+        ImGui::Checkbox("Show Outlines", &app.m_warningOptions.outlinePolygons);
+        ImGui::SliderFloat("Fill Opacity", &app.m_warningOptions.fillOpacity, 0.0f, 0.8f, "%.2f");
+        ImGui::SliderFloat("Outline Scale", &app.m_warningOptions.outlineScale, 0.5f, 3.0f, "%.1f");
+    }
+    if (ImGui::CollapsingHeader("Alert Colors")) {
+        editWarningColor("Tornado", app.m_warningOptions.tornadoColor);
+        editWarningColor("Severe", app.m_warningOptions.severeColor);
+        editWarningColor("Fire", app.m_warningOptions.fireColor);
+        editWarningColor("Flood", app.m_warningOptions.floodColor);
+        editWarningColor("Marine", app.m_warningOptions.marineColor);
+        editWarningColor("Watch", app.m_warningOptions.watchColor);
+        editWarningColor("Statement", app.m_warningOptions.statementColor);
+        editWarningColor("Advisory", app.m_warningOptions.advisoryColor);
+        editWarningColor("Other", app.m_warningOptions.otherColor);
+    }
+
+    if (warnings.empty()) {
+        ImGui::TextDisabled(app.m_historicMode
+            ? "No cached historic polygons yet for this frame."
+            : "No active alert polygons are loaded.");
     } else {
-        auto warningList = app.m_warnings.getWarnings();
-        if (warningList.empty()) {
-            ImGui::TextDisabled("No active warning polygons are loaded.");
-        } else {
-            ImGui::BeginChild("warning_list", ImVec2(0, 0), ImGuiChildFlags_None);
-            for (size_t i = 0; i < warningList.size(); i++) {
-                const auto& warning = warningList[i];
-                ImVec4 textColor = ImVec4(0.75f, 0.84f, 1.0f, 1.0f);
-                if (warning.event.find("Tornado") != std::string::npos)
-                    textColor = ImVec4(1.0f, 0.45f, 0.45f, 1.0f);
-                else if (warning.event.find("Severe Thunderstorm") != std::string::npos)
-                    textColor = ImVec4(1.0f, 0.88f, 0.35f, 1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Text, textColor);
-                std::string label = warning.event + "##warning_" + std::to_string(i);
-                if (ImGui::Selectable(label.c_str(), false))
-                    centerOnWarning(app, warning);
-                ImGui::PopStyleColor();
-                ImGui::TextWrapped("%s", warning.headline.c_str());
-                ImGui::Spacing();
-            }
-            ImGui::EndChild();
+        ImGui::BeginChild("warning_list", ImVec2(0, 0), ImGuiChildFlags_None);
+        for (size_t i = 0; i < warnings.size(); i++) {
+            const auto& warning = warnings[i];
+            ImGui::PushStyleColor(ImGuiCol_Text, rgbaToImVec4(warning.color));
+            std::string label = warning.event + "##warning_" + std::to_string(i);
+            if (ImGui::Selectable(label.c_str(), false))
+                centerOnWarning(app, warning);
+            ImGui::PopStyleColor();
+            ImGui::TextWrapped("%s", warning.headline.c_str());
+            if (!warning.office.empty())
+                ImGui::TextDisabled("%s | %s", warning.office.c_str(),
+                                    warning.historic ? "Historic" : "Live");
+            ImGui::Spacing();
         }
+        ImGui::EndChild();
     }
     ImGui::End();
 
@@ -662,12 +821,10 @@ void render(App& app) {
     skip_station_markers:
 
     // ── NWS Warning Polygons ────────────────────────────────
-    if (!app.m_historicMode) {
+    if (!warnings.empty() && app.m_warningOptions.enabled) {
         auto* wdl = ImGui::GetBackgroundDrawList();
-        auto warnings = app.m_warnings.getWarnings();
-        for (auto& w : warnings) {
+        for (const auto& w : warnings) {
             if (w.lats.size() < 3) continue;
-            // Convert polygon to screen coordinates and draw
             std::vector<ImVec2> pts;
             pts.reserve(w.lats.size());
             bool anyOnScreen = false;
@@ -680,17 +837,15 @@ void render(App& app) {
             }
             if (!anyOnScreen) continue;
 
-            // Draw filled polygon (semi-transparent)
-            uint32_t fillCol = w.color;
-            if (pts.size() >= 3) {
-                // ImGui convex fill - warnings are typically convex
-                wdl->AddConvexPolyFilled(pts.data(), (int)pts.size(), fillCol);
-            }
-            // Draw outline
-            uint32_t outlineCol = fillCol | 0xFF000000; // full alpha
-            for (int i = 0; i < (int)pts.size(); i++) {
-                int j = (i + 1) % (int)pts.size();
-                wdl->AddLine(pts[i], pts[j], outlineCol, w.line_width);
+            if (app.m_warningOptions.fillPolygons && pts.size() >= 3)
+                wdl->AddConcavePolyFilled(pts.data(), (int)pts.size(),
+                                          app.m_warningOptions.resolvedFillColor(w));
+            if (app.m_warningOptions.outlinePolygons) {
+                uint32_t outlineCol = (w.color & 0x00FFFFFFu) | 0xFF000000u;
+                for (int i = 0; i < (int)pts.size(); i++) {
+                    int j = (i + 1) % (int)pts.size();
+                    wdl->AddLine(pts[i], pts[j], outlineCol, w.line_width);
+                }
             }
         }
     }

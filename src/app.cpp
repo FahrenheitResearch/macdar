@@ -32,6 +32,66 @@ std::string filenameFromKey(const std::string& key) {
     return (slash != std::string::npos) ? key.substr(slash + 1) : key;
 }
 
+bool isDigitSpan(const std::string& text, size_t pos, size_t count) {
+    if (pos + count > text.size()) return false;
+    for (size_t i = 0; i < count; i++) {
+        const unsigned char ch = (unsigned char)text[pos + i];
+        if (ch < '0' || ch > '9')
+            return false;
+    }
+    return true;
+}
+
+std::string formatVolumeKeyTimestamp(const std::string& key) {
+    const std::string filename = filenameFromKey(key);
+    if (filename.empty()) return {};
+
+    for (size_t i = 0; i < filename.size(); i++) {
+        if (!isDigitSpan(filename, i, 8))
+            continue;
+
+        size_t timePos = std::string::npos;
+        if (i + 15 <= filename.size() && filename[i + 8] == '_' && isDigitSpan(filename, i + 9, 6))
+            timePos = i + 9;
+        else if (i + 14 <= filename.size() && isDigitSpan(filename, i + 8, 6))
+            timePos = i + 8;
+
+        if (timePos == std::string::npos)
+            continue;
+
+        return filename.substr(i, 4) + "-" +
+               filename.substr(i + 4, 2) + "-" +
+               filename.substr(i + 6, 2) + " " +
+               filename.substr(timePos, 2) + ":" +
+               filename.substr(timePos + 2, 2) + ":" +
+               filename.substr(timePos + 4, 2) + " UTC";
+    }
+
+    return filename;
+}
+
+std::string makeIsoUtcTimestamp(int year, int month, int day, int hour, int minute, int second = 0) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                  year, month, day, hour, minute, second);
+    return buffer;
+}
+
+float stationPollJitter(int stationIdx) {
+    return 0.85f + 0.03f * float((stationIdx * 7) % 11);
+}
+
+std::string buildLiveListQuery(const std::string& station, int year, int month, int day,
+                               const std::string& currentKey) {
+    std::string listPath = buildListUrl(station, year, month, day);
+    std::string query = "/?list-type=2&prefix=" + std::string(listPath.data() + 1);
+    if (!currentKey.empty())
+        query += "&start-after=" + currentKey;
+    else
+        query += "&max-keys=1000";
+    return query;
+}
+
 int findLowestSweepIndex(const std::vector<PrecomputedSweep>& sweeps) {
     int bestIdx = -1;
     float bestElev = std::numeric_limits<float>::max();
@@ -302,6 +362,7 @@ bool App::init(int windowWidth, int windowHeight) {
     gpu::initVolume();
     m_warnings.startPolling();
     m_lastRefresh = std::chrono::steady_clock::now();
+    m_lastLivePollSweep = m_lastRefresh;
 
     printf("App initialized: %d stations, viewport %dx%d\n",
            m_stationsTotal, windowWidth, windowHeight);
@@ -326,85 +387,182 @@ void App::failDownload(int stationIdx, uint64_t generation, std::string error) {
     }
 }
 
-void App::startDownloads() {
+void App::finishLivePollNoChange(int stationIdx, uint64_t generation) {
+    std::lock_guard<std::mutex> lock(m_stationMutex);
+    if (!isCurrentDownloadGeneration(generation)) return;
+    if (stationIdx < 0 || stationIdx >= (int)m_stations.size()) return;
+
+    auto& st = m_stations[stationIdx];
+    st.failed = false;
+    st.error.clear();
+    if (st.downloading) {
+        st.downloading = false;
+        m_stationsDownloading--;
+    }
+}
+
+bool App::stationLikelyVisible(int stationIdx) const {
+    if (stationIdx < 0 || stationIdx >= m_stationsTotal || m_viewport.zoom <= 0.0)
+        return false;
+
+    const double halfLat = (double)m_viewport.height * 0.5 / m_viewport.zoom;
+    const double halfLon = (double)m_viewport.width * 0.5 / m_viewport.zoom;
+    const double marginLat = std::max(1.5, halfLat * 0.1);
+    const double marginLon = std::max(1.5, halfLon * 0.1);
+    const double lat = NEXRAD_STATIONS[stationIdx].lat;
+    const double lon = NEXRAD_STATIONS[stationIdx].lon;
+    return lat >= m_viewport.center_lat - halfLat - marginLat &&
+           lat <= m_viewport.center_lat + halfLat + marginLat &&
+           lon >= m_viewport.center_lon - halfLon - marginLon &&
+           lon <= m_viewport.center_lon + halfLon + marginLon;
+}
+
+float App::livePollIntervalSecForStation(int stationIdx, const StationState& st) const {
+    float base = m_backgroundStationPollIntervalSec;
+    const bool active = stationIdx == m_activeStationIdx;
+    const bool visible = stationLikelyVisible(stationIdx);
+
+    if (active) {
+        base = m_activeStationPollIntervalSec;
+    } else if (visible) {
+        base = m_visibleStationPollIntervalSec;
+    }
+
+    if (!st.parsed || st.failed)
+        base = std::min(base, m_recoveryStationPollIntervalSec);
+
+    if (!m_showAll && !active && visible)
+        base = std::min(base, 20.0f);
+
+    return base * stationPollJitter(stationIdx);
+}
+
+void App::queueLiveStationRefresh(int stationIdx, bool force) {
+    if (stationIdx < 0 || stationIdx >= m_stationsTotal || m_snapshotMode || m_historicMode)
+        return;
+
     const uint64_t generation = m_downloadGeneration.load();
     const bool dealiasEnabled = m_dealias;
+    const auto now = std::chrono::steady_clock::now();
+    std::string station;
+    std::string currentKey;
+
+    {
+        std::lock_guard<std::mutex> lock(m_stationMutex);
+        if (!isCurrentDownloadGeneration(generation)) return;
+        auto& st = m_stations[stationIdx];
+        if (st.downloading) return;
+
+        if (!force) {
+            const float elapsed = st.lastPollAttempt.time_since_epoch().count() == 0
+                ? std::numeric_limits<float>::max()
+                : std::chrono::duration<float>(now - st.lastPollAttempt).count();
+            if (elapsed < livePollIntervalSecForStation(stationIdx, st))
+                return;
+        }
+
+        st.downloading = true;
+        st.failed = false;
+        st.error.clear();
+        st.lastPollAttempt = now;
+        station = st.icao;
+        currentKey = st.latestVolumeKey;
+    }
+    m_stationsDownloading++;
+
     int year, month, day;
     getUtcDate(year, month, day);
+    const std::string listQuery = buildLiveListQuery(station, year, month, day, currentKey);
 
-    printf("Fetching latest data for %04d-%02d-%02d from %d stations...\n",
-           year, month, day, m_stationsTotal);
-
-    for (int i = 0; i < m_stationsTotal; i++) {
-        {
-            std::lock_guard<std::mutex> lock(m_stationMutex);
-            auto& st = m_stations[i];
-            if (st.downloading) continue;
-            st.downloading = true;
-            st.failed = false;
-            st.error.clear();
-        }
-        m_stationsDownloading++;
-
-        std::string station = m_stations[i].icao;
-        int idx = i;
-
-        // First: list files for this station
-        std::string listPath = buildListUrl(station, year, month, day);
-
-        m_downloader->queueDownload(
-            station + "_list",
-            NEXRAD_HOST,
-            "/?list-type=2&prefix=" + std::string(listPath.data() + 1), // strip leading /
-            [this, idx, station, generation, dealiasEnabled](const std::string& id, DownloadResult listResult) {
-                if (!isCurrentDownloadGeneration(generation)) return;
-                if (!listResult.success || listResult.data.empty()) {
-                    // Try previous day
-                    int y, m, d;
-                    getUtcDate(y, m, d);
-                    shiftDate(y, m, d, -1);
-
-                    std::string path2 = "/?list-type=2&prefix=" +
-                        std::to_string(y) + "/" +
-                        (m < 10 ? "0" : "") + std::to_string(m) + "/" +
-                        (d < 10 ? "0" : "") + std::to_string(d) + "/" +
-                        station + "/";
-
-                    auto retry = Downloader::httpGet(NEXRAD_HOST, path2);
-                    if (!retry.success) {
-                        failDownload(idx, generation, "No data available");
-                        return;
-                    }
-                    listResult = std::move(retry);
-                }
-
-                if (!isCurrentDownloadGeneration(generation)) return;
-
-                // Parse file list
-                std::string xml(listResult.data.begin(), listResult.data.end());
-                auto files = parseS3ListResponse(xml);
-
-                if (files.empty()) {
-                    failDownload(idx, generation, "No files found");
+    m_downloader->queueDownload(
+        station + "_live_list",
+        NEXRAD_HOST,
+        listQuery,
+        [this, stationIdx, station, generation, dealiasEnabled, currentKey](const std::string& id, DownloadResult listResult) {
+            if (!isCurrentDownloadGeneration(generation)) return;
+            if (!listResult.success || listResult.data.empty()) {
+                if (!currentKey.empty()) {
+                    finishLivePollNoChange(stationIdx, generation);
                     return;
                 }
 
-                // Download second-to-last file (latest COMPLETE scan)
-                // The very last file may still be in progress
-                int fileIdx = (files.size() >= 2) ? (int)files.size() - 2 : 0;
-                std::string fileKey = files[fileIdx].key;
-                if (!isCurrentDownloadGeneration(generation)) return;
-                auto fileResult = Downloader::httpGet(NEXRAD_HOST, "/" + fileKey);
+                int y, m, d;
+                getUtcDate(y, m, d);
+                shiftDate(y, m, d, -1);
 
-                if (fileResult.success && !fileResult.data.empty()) {
-                    processDownload(idx, std::move(fileResult.data), generation,
-                                    false, false, dealiasEnabled);
-                } else {
-                    failDownload(idx, generation, fileResult.error);
+                std::string path2 = buildLiveListQuery(station, y, m, d, {});
+
+                auto retry = Downloader::httpGet(NEXRAD_HOST, path2);
+                if (!retry.success || retry.data.empty()) {
+                    failDownload(stationIdx, generation, "No data available");
+                    return;
+                }
+                listResult = std::move(retry);
+            }
+
+            if (!isCurrentDownloadGeneration(generation)) return;
+
+            std::string xml(listResult.data.begin(), listResult.data.end());
+            auto files = parseS3ListResponse(xml);
+            if (files.empty()) {
+                if (!currentKey.empty()) {
+                    finishLivePollNoChange(stationIdx, generation);
+                    return;
+                }
+                failDownload(stationIdx, generation, "No files found");
+                return;
+            }
+
+            std::vector<std::string> candidates;
+            const std::string& latestKey = files.back().key;
+            if (currentKey.empty() || latestKey > currentKey)
+                candidates.push_back(latestKey);
+
+            if (files.size() >= 2) {
+                const std::string& fallbackKey = files[files.size() - 2].key;
+                if ((currentKey.empty() || fallbackKey > currentKey) &&
+                    fallbackKey != latestKey) {
+                    candidates.push_back(fallbackKey);
                 }
             }
-        );
-    }
+
+            if (candidates.empty()) {
+                finishLivePollNoChange(stationIdx, generation);
+                return;
+            }
+
+            std::string lastError = "Latest scan unavailable";
+            for (const auto& fileKey : candidates) {
+                if (!isCurrentDownloadGeneration(generation)) return;
+                auto fileResult = Downloader::httpGet(NEXRAD_HOST, "/" + fileKey);
+                if (!fileResult.success || fileResult.data.empty()) {
+                    if (!fileResult.error.empty())
+                        lastError = fileResult.error;
+                    continue;
+                }
+                if (tryProcessDownload(stationIdx, std::move(fileResult.data), generation,
+                                       false, false, dealiasEnabled, fileKey)) {
+                    return;
+                }
+                lastError = "Parse failed: no sweeps";
+            }
+
+            if (!currentKey.empty()) {
+                finishLivePollNoChange(stationIdx, generation);
+                return;
+            }
+            failDownload(stationIdx, generation, lastError);
+        }
+    );
+}
+
+void App::startDownloads() {
+    int year, month, day;
+    getUtcDate(year, month, day);
+    printf("Fetching latest data for %04d-%02d-%02d from %d stations...\n",
+           year, month, day, m_stationsTotal);
+    for (int i = 0; i < m_stationsTotal; i++)
+        queueLiveStationRefresh(i, true);
 }
 
 void App::resetStationsForReload() {
@@ -428,6 +586,9 @@ void App::resetStationsForReload() {
         st.parsedData = {};
         st.gpuInfo = {};
         st.precomputed.clear();
+        st.lastUpdate = {};
+        st.lastPollAttempt = {};
+        st.latestVolumeKey.clear();
         st.detection = {};
         st.uploaded_product = -1;
         st.uploaded_tilt = -1;
@@ -456,6 +617,12 @@ void App::startDownloadsForTimestamp(int year, int month, int day, int hour, int
     const bool lowestSweepOnly = m_snapshotLowestSweepOnly;
     const bool dealiasEnabled = m_dealias;
     const int targetSeconds = hour * 3600 + minute * 60;
+    if (snapshotMode) {
+        m_snapshotTimestampIso = makeIsoUtcTimestamp(year, month, day, hour, minute);
+        m_warnings.requestHistoricSnapshot(m_snapshotTimestampIso);
+    } else {
+        m_snapshotTimestampIso.clear();
+    }
     printf("Fetching archive snapshot for %04d-%02d-%02d %02d:%02d UTC from %d stations...\n",
            year, month, day, hour, minute, m_stationsTotal);
 
@@ -514,26 +681,27 @@ void App::startDownloadsForTimestamp(int year, int month, int day, int hour, int
                 auto fileResult = Downloader::httpGet(NEXRAD_HOST, "/" + files[bestIdx].key);
                 if (fileResult.success && !fileResult.data.empty()) {
                     processDownload(idx, std::move(fileResult.data), generation,
-                                    snapshotMode, lowestSweepOnly, dealiasEnabled);
+                                    snapshotMode, lowestSweepOnly, dealiasEnabled,
+                                    files[bestIdx].key);
                 } else {
                     failDownload(idx, generation,
                                  fileResult.error.empty() ? "Archive download failed"
-                                                          : fileResult.error);
+                                                           : fileResult.error);
                 }
             }
         );
     }
 }
 
-void App::processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t generation,
-                          bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled) {
-    if (!isCurrentDownloadGeneration(generation)) return;
+bool App::tryProcessDownload(int stationIdx, std::vector<uint8_t> data, uint64_t generation,
+                             bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled,
+                             const std::string& volumeKey) {
+    if (!isCurrentDownloadGeneration(generation)) return false;
     // CPU: BZ2 decompression only (inherently sequential algorithm)
     auto parsed = Level2Parser::parse(data);
 
     if (parsed.sweeps.empty()) {
-        failDownload(stationIdx, generation, "Parse failed: no sweeps");
-        return;
+        return false;
     }
 
     // GPU PIPELINE: parsing + transposition happen on GPU
@@ -616,7 +784,7 @@ void App::processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t ge
 
     {
         std::lock_guard<std::mutex> lock(m_stationMutex);
-        if (!isCurrentDownloadGeneration(generation)) return;
+        if (!isCurrentDownloadGeneration(generation)) return false;
         m_stations[stationIdx].parsedData = std::move(parsed);
         m_stations[stationIdx].precomputed = std::move(precomp);
         m_stations[stationIdx].parsed = true;
@@ -627,6 +795,7 @@ void App::processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t ge
             m_stationsDownloading--;
         }
         m_stations[stationIdx].lastUpdate = std::chrono::steady_clock::now();
+        m_stations[stationIdx].latestVolumeKey = volumeKey;
 
         // Run velocity dealiasing on parsed data
         if (dealiasEnabled) dealias(stationIdx);
@@ -639,6 +808,16 @@ void App::processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t ge
         std::lock_guard<std::mutex> lock(m_uploadMutex);
         if (isCurrentDownloadGeneration(generation))
             m_uploadQueue.push_back(stationIdx);
+    }
+    return true;
+}
+
+void App::processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t generation,
+                          bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled,
+                          const std::string& volumeKey) {
+    if (!tryProcessDownload(stationIdx, std::move(data), generation,
+                            snapshotMode, lowestSweepOnly, dealiasEnabled, volumeKey)) {
+        failDownload(stationIdx, generation, "Parse failed: no sweeps");
     }
 }
 
@@ -726,6 +905,7 @@ std::vector<StationUiState> App::stations() const {
         ui.lon = st.lon;
         ui.display_lat = st.gpuInfo.lat != 0.0f ? st.gpuInfo.lat : st.lat;
         ui.display_lon = st.gpuInfo.lon != 0.0f ? st.gpuInfo.lon : st.lon;
+        ui.latest_scan_utc = formatVolumeKeyTimestamp(st.latestVolumeKey);
         ui.downloading = st.downloading;
         ui.parsed = st.parsed;
         ui.uploaded = st.uploaded;
@@ -741,6 +921,56 @@ std::vector<StationUiState> App::stations() const {
         snapshot.push_back(std::move(ui));
     }
     return snapshot;
+}
+
+std::vector<WarningPolygon> App::currentWarnings() const {
+    std::vector<WarningPolygon> source;
+    if (m_historicMode) {
+        const RadarFrame* fr = m_historic.frame(m_historic.currentFrame());
+        if (fr && !fr->valid_time_iso.empty())
+            source = m_warnings.getHistoricWarnings(fr->valid_time_iso);
+    } else if (m_snapshotMode && !m_snapshotTimestampIso.empty()) {
+        source = m_warnings.getHistoricWarnings(m_snapshotTimestampIso);
+    } else {
+        source = m_warnings.getWarnings();
+    }
+
+    std::vector<WarningPolygon> filtered;
+    filtered.reserve(source.size());
+    for (auto& warning : source) {
+        if (!m_warningOptions.allows(warning)) continue;
+        warning.color = m_warningOptions.resolvedColor(warning);
+        warning.line_width = m_warningOptions.resolvedLineWidth(warning);
+        filtered.push_back(std::move(warning));
+    }
+    return filtered;
+}
+
+bool App::loadColorTableFromFile(const std::string& path) {
+    ParsedColorTable table;
+    std::string error;
+    if (!loadColorTableFile(path, table, error)) {
+        m_colorTableStatus = "Palette load failed: " + error;
+        return false;
+    }
+
+    gpu::setColorTable(table.product, table.colors.data());
+    m_colorTableLabels[table.product] = table.label;
+    m_colorTableStatus = table.format + " loaded for " + PRODUCT_INFO[table.product].name +
+        " from " + table.label;
+    invalidateFrameCache(true);
+    m_needsRerender = true;
+    return true;
+}
+
+void App::resetColorTable(int product) {
+    if (product < 0 || product >= NUM_PRODUCTS)
+        product = m_activeProduct;
+    gpu::resetColorTable(product);
+    m_colorTableLabels[product].clear();
+    m_colorTableStatus = std::string("Reset ") + PRODUCT_INFO[product].name + " to built-in palette";
+    invalidateFrameCache(true);
+    m_needsRerender = true;
 }
 
 bool App::stationUploadMatchesSelection(const StationState& st) const {
@@ -877,6 +1107,7 @@ void App::refreshActiveTiltMetadata() {
         if (!fr || !fr->ready || fr->sweeps.empty()) return;
         int productTilts = countProductSweeps(fr->sweeps, m_activeProduct);
         if (productTilts <= 0) return;
+        if (m_activeTilt >= productTilts) m_activeTilt = productTilts - 1;
         m_maxTilts = productTilts;
         int sweepIdx = findProductSweep(fr->sweeps, m_activeProduct, m_activeTilt);
         m_activeTiltAngle = fr->sweeps[sweepIdx].elevation_angle;
@@ -890,9 +1121,30 @@ void App::refreshActiveTiltMetadata() {
 
     int productTilts = countProductSweeps(st.precomputed, m_activeProduct);
     if (productTilts <= 0) return;
+    if (m_activeTilt >= productTilts) m_activeTilt = productTilts - 1;
     m_maxTilts = productTilts;
     int sweepIdx = findProductSweep(st.precomputed, m_activeProduct, m_activeTilt);
     m_activeTiltAngle = st.precomputed[sweepIdx].elevation_angle;
+}
+
+int App::currentAvailableTilts() const {
+    if (m_historicMode) {
+        const RadarFrame* fr = m_historic.frame(m_historic.currentFrame());
+        if (!fr || !fr->ready || fr->sweeps.empty()) return 1;
+        const int tilts = countProductSweeps(fr->sweeps, m_activeProduct);
+        return std::max(1, tilts);
+    }
+
+    if (m_activeStationIdx < 0 || m_activeStationIdx >= (int)m_stations.size())
+        return std::max(1, m_maxTilts);
+
+    std::lock_guard<std::mutex> lock(m_stationMutex);
+    const auto& st = m_stations[m_activeStationIdx];
+    if (st.precomputed.empty())
+        return std::max(1, m_maxTilts);
+
+    const int tilts = countProductSweeps(st.precomputed, m_activeProduct);
+    return std::max(1, tilts);
 }
 
 void App::uploadStation(int stationIdx) {
@@ -913,9 +1165,9 @@ void App::uploadStation(int stationIdx) {
         m_gridDirty = true;
         return;
     }
-    if (productTilts > m_maxTilts) m_maxTilts = productTilts;
-
     bool lowestSweepMosaic = m_showAll || m_snapshotMode;
+    if (!lowestSweepMosaic && stationIdx == m_activeStationIdx)
+        m_maxTilts = productTilts;
     int sweepIdx = lowestSweepMosaic
         ? findProductSweep(st.precomputed, m_activeProduct, 0)
         : findProductSweep(st.precomputed, m_activeProduct, m_activeTilt);
@@ -986,6 +1238,60 @@ void App::buildSpatialGrid() {
     m_gridDirty = false;
 }
 
+void App::updateLivePolling(std::chrono::steady_clock::time_point now) {
+    std::vector<int> activeDue;
+    std::vector<std::pair<int, float>> visibleDue;
+    std::vector<std::pair<int, float>> backgroundDue;
+
+    {
+        std::lock_guard<std::mutex> lock(m_stationMutex);
+        activeDue.reserve(1);
+        visibleDue.reserve(m_stations.size());
+        backgroundDue.reserve(m_stations.size());
+
+        for (int i = 0; i < (int)m_stations.size(); i++) {
+            const auto& st = m_stations[i];
+            if (st.downloading) continue;
+
+            const float elapsed = st.lastPollAttempt.time_since_epoch().count() == 0
+                ? std::numeric_limits<float>::max()
+                : std::chrono::duration<float>(now - st.lastPollAttempt).count();
+            if (elapsed < livePollIntervalSecForStation(i, st))
+                continue;
+
+            if (i == m_activeStationIdx) {
+                activeDue.push_back(i);
+            } else if (stationLikelyVisible(i)) {
+                const float dLat = NEXRAD_STATIONS[i].lat - m_viewport.center_lat;
+                const float dLon = NEXRAD_STATIONS[i].lon - m_viewport.center_lon;
+                visibleDue.emplace_back(i, dLat * dLat + dLon * dLon);
+            } else {
+                backgroundDue.emplace_back(i, -elapsed);
+            }
+        }
+    }
+
+    std::sort(visibleDue.begin(), visibleDue.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; });
+    std::sort(backgroundDue.begin(), backgroundDue.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; });
+
+    for (int idx : activeDue)
+        queueLiveStationRefresh(idx, true);
+
+    int visibleBudget = m_maxVisiblePollsPerSweep;
+    for (const auto& entry : visibleDue) {
+        if (visibleBudget-- <= 0) break;
+        queueLiveStationRefresh(entry.first, true);
+    }
+
+    int backgroundBudget = m_maxBackgroundPollsPerSweep;
+    for (const auto& entry : backgroundDue) {
+        if (backgroundBudget-- <= 0) break;
+        queueLiveStationRefresh(entry.first, true);
+    }
+}
+
 void App::update(float dt) {
     // Historic mode: lock to event station, upload only on frame change
     if (m_historicMode) {
@@ -1010,6 +1316,8 @@ void App::update(float dt) {
                 fr = m_historic.frame(curFrame);
                 if (fr && fr->ready) {
                     uploadHistoricFrame(curFrame);
+                    if (!fr->valid_time_iso.empty())
+                        m_warnings.requestHistoricSnapshot(fr->valid_time_iso);
                     m_lastHistoricFrame = curFrame;
                     printf("Historic frame %d: %s\n", curFrame, fr->timestamp.c_str());
                 }
@@ -1027,11 +1335,12 @@ void App::update(float dt) {
         m_uploadQueue.clear();
     }
 
-    // Auto-refresh check
     auto now = std::chrono::steady_clock::now();
-    float elapsed = std::chrono::duration<float>(now - m_lastRefresh).count();
-    if (!m_snapshotMode && elapsed > m_refreshIntervalSec) {
-        refreshData();
+    const float schedulerElapsed =
+        std::chrono::duration<float>(now - m_lastLivePollSweep).count();
+    if (!m_snapshotMode && schedulerElapsed >= m_livePollSweepIntervalSec) {
+        updateLivePolling(now);
+        m_lastLivePollSweep = now;
     }
 }
 
@@ -1203,6 +1512,8 @@ void App::onMouseMove(double mx, double my) {
         }
         if (needsUpload)
             uploadStation(bestIdx);
+        if (!m_snapshotMode && !m_historicMode)
+            queueLiveStationRefresh(bestIdx, true);
     }
 }
 
@@ -1239,6 +1550,8 @@ void App::selectStation(int idx, bool centerView, double zoom) {
     }
     if (needsUpload)
         uploadStation(idx);
+    if (!m_snapshotMode && !m_historicMode)
+        queueLiveStationRefresh(idx, true);
 
     refreshActiveTiltMetadata();
     if (m_crossSection || m_mode3D)
@@ -1291,11 +1604,14 @@ void App::nextProduct() { setProduct((m_activeProduct + 1) % (int)Product::COUNT
 void App::prevProduct() { setProduct((m_activeProduct - 1 + (int)Product::COUNT) % (int)Product::COUNT); }
 
 void App::setTilt(int t) {
+    m_maxTilts = currentAvailableTilts();
     if (t < 0) t = 0;
     if (t >= m_maxTilts) t = m_maxTilts - 1;
-    if (t == m_activeTilt) return;
+    if (t == m_activeTilt) {
+        refreshActiveTiltMetadata();
+        return;
+    }
     m_activeTilt = t;
-    m_maxTilts = 1;
     m_volumeBuilt = false;
     m_volumeStation = -1;
     invalidateFrameCache(true);
@@ -1426,10 +1742,12 @@ void App::loadHistoricEvent(int idx) {
     m_snapshotMode = false;
     m_snapshotLowestSweepOnly = false;
     m_snapshotLabel.clear();
+    m_snapshotTimestampIso.clear();
     m_lastHistoricFrame = -1;
     m_volumeBuilt = false;
     m_volumeStation = -1;
     invalidateFrameCache(true);
+    m_warnings.clearHistoric();
     m_historic.loadEvent(idx);
     // Center viewport on the event
     if (idx >= 0 && idx < NUM_HISTORIC_EVENTS) {
@@ -1452,11 +1770,12 @@ void App::uploadHistoricFrame(int frameIdx) {
         m_volumeStation = -1;
         return;
     }
+    if (m_activeTilt >= productTilts) m_activeTilt = productTilts - 1;
     int sweepIdx = findProductSweep(fr->sweeps, m_activeProduct, m_activeTilt);
     auto& pc = fr->sweeps[sweepIdx];
     if (pc.num_radials == 0) return;
 
-    if (productTilts > m_maxTilts) m_maxTilts = productTilts;
+    m_maxTilts = productTilts;
 
     GpuStationInfo info = {};
     info.lat = fr->station_lat;
@@ -1497,8 +1816,6 @@ void App::uploadHistoricFrame(int frameIdx) {
     }
     m_activeStationIdx = 0;
     m_activeTiltAngle = pc.elevation_angle;
-    if ((int)fr->sweeps.size() > m_maxTilts)
-        m_maxTilts = (int)fr->sweeps.size();
 
     if (m_crossSection || m_mode3D)
         rebuildVolumeForCurrentSelection();
@@ -1508,14 +1825,34 @@ void App::uploadHistoricFrame(int frameIdx) {
 
 void App::refreshData() {
     printf("Refreshing data from AWS...\n");
+    const bool clearExistingScene = m_snapshotMode || m_historicMode;
     m_lastRefresh = std::chrono::steady_clock::now();
     m_autoTrackStation = true;
+    m_historic.cancel();
+    m_historicMode = false;
+    m_warnings.clearHistoric();
+
+    if (clearExistingScene) {
+        {
+            std::lock_guard<std::mutex> lock(m_stationMutex);
+            ++m_downloadGeneration;
+            m_snapshotMode = false;
+            m_snapshotLowestSweepOnly = false;
+            m_snapshotLabel.clear();
+            m_snapshotTimestampIso.clear();
+        }
+        resetStationsForReload();
+        startDownloads();
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_stationMutex);
         ++m_downloadGeneration;
         m_snapshotMode = false;
         m_snapshotLowestSweepOnly = false;
         m_snapshotLabel.clear();
+        m_snapshotTimestampIso.clear();
         m_stationsDownloading = 0;
 
         // Keep current rendered data visible until replacement downloads arrive.
@@ -1544,12 +1881,14 @@ void App::loadMarch302025Snapshot(bool lowestSweepOnly) {
     m_snapshotLabel = lowestSweepOnly
         ? "Mar 30 2025 5 PM ET (Lowest Sweep)"
         : "Mar 30 2025 5 PM ET";
+    m_snapshotTimestampIso = makeIsoUtcTimestamp(2025, 3, 30, 21, 0);
     m_showAll = true;
     m_mode3D = false;
     m_crossSection = false;
     m_viewport.center_lat = 39.0;
     m_viewport.center_lon = -98.0;
     m_viewport.zoom = 28.0;
+    m_warnings.clearHistoric();
     {
         std::lock_guard<std::mutex> lock(m_stationMutex);
         ++m_downloadGeneration;

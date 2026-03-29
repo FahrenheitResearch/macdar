@@ -14,6 +14,8 @@
 struct RadarFrame {
     std::string filename;
     std::string timestamp; // extracted from filename
+    std::string valid_time_iso;
+    int64_t valid_time_epoch = 0;
     std::vector<PrecomputedSweep> sweeps; // precomputed GPU-ready data (from app.h)
     float station_lat = 0, station_lon = 0;
     bool ready = false;

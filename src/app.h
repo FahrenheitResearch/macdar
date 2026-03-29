@@ -3,9 +3,11 @@
 #include "nexrad/products.h"
 #include "cuda/renderer.cuh"
 #include "render/gl_interop.h"
+#include "render/color_table.h"
 #include "render/projection.h"
 #include "cuda/volume3d.cuh"
 #include "net/downloader.h"
+#include "net/polling_links.h"
 #include "net/warnings.h"
 #include "historic.h"
 #include <vector>
@@ -42,6 +44,8 @@ struct StationState {
     GpuStationInfo   gpuInfo;
     std::vector<PrecomputedSweep> precomputed; // all sweeps, ready for GPU
     std::chrono::steady_clock::time_point lastUpdate;
+    std::chrono::steady_clock::time_point lastPollAttempt;
+    std::string  latestVolumeKey;
     Detection detection;
     int uploaded_product = -1;
     int uploaded_tilt = -1;
@@ -54,6 +58,7 @@ struct StationUiState {
     std::string  icao;
     float        lat = 0.0f, lon = 0.0f;
     float        display_lat = 0.0f, display_lon = 0.0f;
+    std::string  latest_scan_utc;
     bool         downloading = false;
     bool         parsed = false;
     bool         uploaded = false;
@@ -128,6 +133,11 @@ public:
     void            setAutoTrackStation(bool enabled) { m_autoTrackStation = enabled; }
     float           cursorLat() const { return m_mouseLat; }
     float           cursorLon() const { return m_mouseLon; }
+    std::vector<WarningPolygon> currentWarnings() const;
+    bool            loadColorTableFromFile(const std::string& path);
+    void            resetColorTable(int product = -1);
+    const std::string& colorTableStatus() const { return m_colorTableStatus; }
+    const std::string& colorTableLabel(int product) const { return m_colorTableLabels[product]; }
 
     // Navigation: arrow keys
     void nextProduct();
@@ -154,7 +164,8 @@ private:
 
     // Process a completed download
     void processDownload(int stationIdx, std::vector<uint8_t> data, uint64_t generation,
-                         bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled);
+                         bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled,
+                         const std::string& volumeKey);
 
     // Upload parsed data to GPU
     void uploadStation(int stationIdx);
@@ -168,8 +179,17 @@ private:
     bool isCurrentDownloadGeneration(uint64_t generation) const;
     void failDownload(int stationIdx, uint64_t generation, std::string error);
     void refreshActiveTiltMetadata();
+    int currentAvailableTilts() const;
     void resetStationsForReload();
     void startDownloadsForTimestamp(int year, int month, int day, int hour, int minute);
+    void queueLiveStationRefresh(int stationIdx, bool force = false);
+    void finishLivePollNoChange(int stationIdx, uint64_t generation);
+    bool tryProcessDownload(int stationIdx, std::vector<uint8_t> data, uint64_t generation,
+                            bool snapshotMode, bool lowestSweepOnly, bool dealiasEnabled,
+                            const std::string& volumeKey);
+    void updateLivePolling(std::chrono::steady_clock::time_point now);
+    bool stationLikelyVisible(int stationIdx) const;
+    float livePollIntervalSecForStation(int stationIdx, const StationState& st) const;
 
     Viewport         m_viewport;
     int              m_activeProduct = 0;
@@ -181,6 +201,7 @@ private:
     bool             m_snapshotMode = false;
     bool             m_snapshotLowestSweepOnly = false;
     std::string      m_snapshotLabel;
+    std::string      m_snapshotTimestampIso;
     int              m_windowWidth = 1920;
     int              m_windowHeight = 1080;
 
@@ -235,11 +256,19 @@ private:
 
     // Auto-refresh timer
     std::chrono::steady_clock::time_point m_lastRefresh;
-    float m_refreshIntervalSec = 300.0f;
+    std::chrono::steady_clock::time_point m_lastLivePollSweep;
+    float m_livePollSweepIntervalSec = 1.0f;
+    float m_activeStationPollIntervalSec = 6.0f;
+    float m_visibleStationPollIntervalSec = 30.0f;
+    float m_backgroundStationPollIntervalSec = 120.0f;
+    float m_recoveryStationPollIntervalSec = 20.0f;
+    int   m_maxVisiblePollsPerSweep = 4;
+    int   m_maxBackgroundPollsPerSweep = 2;
 
 public:
     // NWS warning overlay
     WarningFetcher m_warnings;
+    WarningRenderOptions m_warningOptions;
 
 public:
     // Historic event viewer
@@ -275,6 +304,13 @@ public:
     // Velocity dealiasing
     void dealias(int stationIdx);
     bool m_dealias = true;
+
+    // External color tables
+    std::string m_colorTableStatus;
+    std::string m_colorTableLabels[NUM_PRODUCTS];
+
+    // GR2-style polling links
+    PollingLinkManager m_pollingLinks;
 
     // Pre-baked animation frame cache
     static constexpr int MAX_CACHED_FRAMES = 60;
