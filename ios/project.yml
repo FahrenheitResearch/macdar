@@ -4,12 +4,12 @@ options:
   deploymentTarget:
     iOS: "17.0"
   xcodeVersion: "15.0"
-  generateEmptyDirectories: true
+  createIntermediateGroups: true
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    TARGETED_DEVICE_FAMILY: "1"  # iPhone only
+    TARGETED_DEVICE_FAMILY: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_FILE: macdar/Resources/Info.plist
@@ -18,54 +18,51 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_OBJC_BRIDGING_HEADER: macdar/Bridge/macdar-Bridging-Header.h
     CLANG_CXX_LANGUAGE_STANDARD: "c++17"
-    GCC_PREPROCESSOR_DEFINITIONS:
-      - "TARGET_OS_IPHONE=1"
     OTHER_LDFLAGS:
-      - "-lcurl"
       - "-lz"
       - "-lbz2"
+      - "-lcurl"
+    HEADER_SEARCH_PATHS:
+      - "$(PROJECT_DIR)/shared_src"
+      - "$(PROJECT_DIR)/shared_src/metal"
+      - "$(PROJECT_DIR)/macdar/Bridge"
+      - "$(PROJECT_DIR)/macdar/ThirdParty"
 
 targets:
   macdar:
     type: application
     platform: iOS
     sources:
-      # Swift app files
+      # ── Swift UI ──
       - path: macdar/App
-        type: group
       - path: macdar/Views
-        type: group
       - path: macdar/Renderer
-        type: group
+      # ── ObjC++ Bridge ──
       - path: macdar/Bridge
-        type: group
-        compilerFlags:
-          - "-fobjc-arc"
-      # Shared C++ sources (compiled as ObjC++)
-      - path: ../src/app.cpp
+      # ── Resources ──
+      - path: macdar/Resources
+      # ── Shared C++ (all compiled as ObjC++ for Metal header compat) ──
+      - path: shared_src/app.cpp
         compilerFlags: "-x objective-c++ -fobjc-arc"
-      - path: ../src/historic.cpp
+      - path: shared_src/historic.cpp
         compilerFlags: "-x objective-c++ -fobjc-arc"
-      - path: ../src/nexrad/level2_parser.cpp
-      - path: ../src/net/downloader.cpp
-      - path: ../src/net/polling_links.cpp
-      - path: ../src/net/warnings.cpp
-      - path: ../src/render/color_table.cpp
+      - path: shared_src/nexrad/level2_parser.cpp
+        compilerFlags: "-x objective-c++"
+      - path: shared_src/net/downloader.cpp
+        compilerFlags: "-x objective-c++"
+      - path: shared_src/net/polling_links.cpp
+        compilerFlags: "-x objective-c++"
+      - path: shared_src/net/warnings.cpp
+        compilerFlags: "-x objective-c++"
+      - path: shared_src/render/color_table.cpp
         compilerFlags: "-x objective-c++ -fobjc-arc"
-      # Metal renderer
-      - path: ../src/metal/MetalRenderer.mm
+      # ── Metal display interop ──
+      - path: shared_src/render/metal_interop.mm
         compilerFlags: "-fobjc-arc"
-      # Metal shaders
-      - path: ../src/metal/gpu_pipeline.metal
-      - path: ../src/metal/renderer.metal
-      - path: ../src/metal/volume3d.metal
-      # BZip2 (compiled from source)
-      # Note: need to add bzip2 sources or link system libbz2
-    settings:
-      base:
-        HEADER_SEARCH_PATHS:
-          - "$(PROJECT_DIR)/../src"
-          - "$(PROJECT_DIR)/../src/metal"
-          - "$(PROJECT_DIR)/macdar/Bridge"
-    dependencies: []
-    preBuildScripts: []
+      # ── Metal Renderer (ObjC++) ──
+      - path: shared_src/metal/MetalRenderer.mm
+        compilerFlags: "-fobjc-arc"
+      # ── Metal Shaders (compiled by Xcode into default.metallib) ──
+      - path: shared_src/metal/gpu_pipeline.metal
+      - path: shared_src/metal/renderer.metal
+      - path: shared_src/metal/volume3d.metal

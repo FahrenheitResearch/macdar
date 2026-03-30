@@ -1,0 +1,505 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		023DFCA67D9045326DEA8CDC /* metal_interop.mm in Sources */ = {isa = PBXBuildFile; fileRef = A5EC58DF408132775393AA21 /* metal_interop.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		0D7E40BFC3ED261F0A77A785 /* volume3d.metal in Sources */ = {isa = PBXBuildFile; fileRef = 7F184D25E70F3AAF5415F2B4 /* volume3d.metal */; };
+		1941FC1609FF7687BC5F528E /* MetalRenderer.mm in Sources */ = {isa = PBXBuildFile; fileRef = C58C3915B7BEF025353AF10B /* MetalRenderer.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		197AD763AFEA436C8B476AB2 /* historic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 56392CF250C39188154F4E75 /* historic.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++ -fobjc-arc"; }; };
+		23EC23724FE30521011C5655 /* level2_parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D88DAF138332D076061631BB /* level2_parser.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++"; }; };
+		3106779312B84609EBD10B07 /* warnings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12EA69028CFF51E1DA93AADB /* warnings.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++"; }; };
+		3426E29FD0E8879429794DC9 /* TiltControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F056CE2D510461653ADC922 /* TiltControlView.swift */; };
+		3AD79A3551E50E11F40E93E5 /* polling_links.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B32589671727C06E1791D748 /* polling_links.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++"; }; };
+		477544111B6AE49ADBD20BFD /* macdarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD4F693E5D48D850B8A8C579 /* macdarApp.swift */; };
+		64888BB989DDDB9D8A287F43 /* renderer.metal in Sources */ = {isa = PBXBuildFile; fileRef = 60925731FC982F8C14CFF10B /* renderer.metal */; };
+		6DC52B2584CF22E8FD13105C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8E3524DBCFD814D398E51E /* SettingsView.swift */; };
+		70F075560E798A7F975968BC /* gpu_pipeline.metal in Sources */ = {isa = PBXBuildFile; fileRef = 0C4E90065D5334FFE3CB7959 /* gpu_pipeline.metal */; };
+		7992AEC34DEB95E39A1080FD /* StationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4517924F4DED9BBC4DF2EF28 /* StationPickerSheet.swift */; };
+		805E1B9C2D3571B8BBC71F6D /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C00DAE2C58307CCEB7307C /* AppState.swift */; };
+		8B9C5CD8D687256752571A51 /* app.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A509CA7D957DD10C8BC2BB60 /* app.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++ -fobjc-arc"; }; };
+		8CA371C6CD3DDC511374B614 /* RadarEngine.mm in Sources */ = {isa = PBXBuildFile; fileRef = 439A452E888E6A427096B803 /* RadarEngine.mm */; };
+		9F147EC209689EFD9EC009E4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6134FF89D8B27EBCEE8E9FA2 /* Assets.xcassets */; };
+		A2091DFF59FD76718055DD12 /* downloader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 301DDC18BC34D866AFABE892 /* downloader.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++"; }; };
+		A6FE7B106231089666B0ECB5 /* ProductPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA223A05F093FC7DAAC940E7 /* ProductPickerView.swift */; };
+		B0D233B8CF3CFAEDF19CBE45 /* MetalRenderCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF94D31942E62FBF5897764 /* MetalRenderCoordinator.swift */; };
+		D7019E87AC4ED79187A4F1CC /* RadarMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F387AAFD237E6E9ED2F83DD0 /* RadarMapView.swift */; };
+		F36403B7F386AAE4023492F9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD9431781C33A62EA2A936E /* ContentView.swift */; };
+		F920B71F9AC21A37C3C5F198 /* color_table.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0D05A24099BA8753B1265F60 /* color_table.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++ -fobjc-arc"; }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0C4E90065D5334FFE3CB7959 /* gpu_pipeline.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = gpu_pipeline.metal; sourceTree = "<group>"; };
+		0D05A24099BA8753B1265F60 /* color_table.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = color_table.cpp; sourceTree = "<group>"; };
+		12EA69028CFF51E1DA93AADB /* warnings.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = warnings.cpp; sourceTree = "<group>"; };
+		197A675C6C6234CAFD90664D /* macdar.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = macdar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		19BE94434DFF415B3E77E064 /* macdar-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "macdar-Bridging-Header.h"; sourceTree = "<group>"; };
+		2AD9431781C33A62EA2A936E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		301DDC18BC34D866AFABE892 /* downloader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = downloader.cpp; sourceTree = "<group>"; };
+		439A452E888E6A427096B803 /* RadarEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RadarEngine.mm; sourceTree = "<group>"; };
+		4517924F4DED9BBC4DF2EF28 /* StationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationPickerSheet.swift; sourceTree = "<group>"; };
+		56392CF250C39188154F4E75 /* historic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = historic.cpp; sourceTree = "<group>"; };
+		60925731FC982F8C14CFF10B /* renderer.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = renderer.metal; sourceTree = "<group>"; };
+		6134FF89D8B27EBCEE8E9FA2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		74721D9BD77809E0DBC4FBAE /* RadarEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RadarEngine.h; sourceTree = "<group>"; };
+		7CF94D31942E62FBF5897764 /* MetalRenderCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalRenderCoordinator.swift; sourceTree = "<group>"; };
+		7F184D25E70F3AAF5415F2B4 /* volume3d.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = volume3d.metal; sourceTree = "<group>"; };
+		874233CF05AE61487F53D97E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8F056CE2D510461653ADC922 /* TiltControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiltControlView.swift; sourceTree = "<group>"; };
+		A509CA7D957DD10C8BC2BB60 /* app.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app.cpp; sourceTree = "<group>"; };
+		A5EC58DF408132775393AA21 /* metal_interop.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = metal_interop.mm; sourceTree = "<group>"; };
+		B32589671727C06E1791D748 /* polling_links.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = polling_links.cpp; sourceTree = "<group>"; };
+		BA223A05F093FC7DAAC940E7 /* ProductPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductPickerView.swift; sourceTree = "<group>"; };
+		C3C00DAE2C58307CCEB7307C /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		C58C3915B7BEF025353AF10B /* MetalRenderer.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MetalRenderer.mm; sourceTree = "<group>"; };
+		D88DAF138332D076061631BB /* level2_parser.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = level2_parser.cpp; sourceTree = "<group>"; };
+		DE8E3524DBCFD814D398E51E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F387AAFD237E6E9ED2F83DD0 /* RadarMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarMapView.swift; sourceTree = "<group>"; };
+		FD4F693E5D48D850B8A8C579 /* macdarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = macdarApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		3EEAB833342DF9A49C3D72DE /* metal */ = {
+			isa = PBXGroup;
+			children = (
+				0C4E90065D5334FFE3CB7959 /* gpu_pipeline.metal */,
+				C58C3915B7BEF025353AF10B /* MetalRenderer.mm */,
+				60925731FC982F8C14CFF10B /* renderer.metal */,
+				7F184D25E70F3AAF5415F2B4 /* volume3d.metal */,
+			);
+			path = metal;
+			sourceTree = "<group>";
+		};
+		50723787B5D5D75AC7D87F8C /* nexrad */ = {
+			isa = PBXGroup;
+			children = (
+				D88DAF138332D076061631BB /* level2_parser.cpp */,
+			);
+			path = nexrad;
+			sourceTree = "<group>";
+		};
+		5E19280377A93661EC410E1B /* Renderer */ = {
+			isa = PBXGroup;
+			children = (
+				7CF94D31942E62FBF5897764 /* MetalRenderCoordinator.swift */,
+			);
+			path = Renderer;
+			sourceTree = "<group>";
+		};
+		63C5EADEBA6C0803511AF029 /* net */ = {
+			isa = PBXGroup;
+			children = (
+				301DDC18BC34D866AFABE892 /* downloader.cpp */,
+				B32589671727C06E1791D748 /* polling_links.cpp */,
+				12EA69028CFF51E1DA93AADB /* warnings.cpp */,
+			);
+			path = net;
+			sourceTree = "<group>";
+		};
+		7F1176EDA6B0C337B39C77E1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C3C00DAE2C58307CCEB7307C /* AppState.swift */,
+				FD4F693E5D48D850B8A8C579 /* macdarApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		898CC5A00BEE6BFDC5174E68 = {
+			isa = PBXGroup;
+			children = (
+				8B35BCED5F2597892713A673 /* macdar */,
+				EDF3BA57E7ADEFED932E5CF5 /* shared_src */,
+				8B934C549A30B4988B5F11BB /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8B35BCED5F2597892713A673 /* macdar */ = {
+			isa = PBXGroup;
+			children = (
+				7F1176EDA6B0C337B39C77E1 /* App */,
+				92BE2DF4487E81D8E61CFDD0 /* Bridge */,
+				5E19280377A93661EC410E1B /* Renderer */,
+				DE79A403C0D58683CD083C6C /* Resources */,
+				C9102DDF1391F8504ACFBC7A /* Views */,
+			);
+			path = macdar;
+			sourceTree = "<group>";
+		};
+		8B934C549A30B4988B5F11BB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				197A675C6C6234CAFD90664D /* macdar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		92BE2DF4487E81D8E61CFDD0 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				19BE94434DFF415B3E77E064 /* macdar-Bridging-Header.h */,
+				74721D9BD77809E0DBC4FBAE /* RadarEngine.h */,
+				439A452E888E6A427096B803 /* RadarEngine.mm */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		C9102DDF1391F8504ACFBC7A /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				2AD9431781C33A62EA2A936E /* ContentView.swift */,
+				BA223A05F093FC7DAAC940E7 /* ProductPickerView.swift */,
+				F387AAFD237E6E9ED2F83DD0 /* RadarMapView.swift */,
+				DE8E3524DBCFD814D398E51E /* SettingsView.swift */,
+				4517924F4DED9BBC4DF2EF28 /* StationPickerSheet.swift */,
+				8F056CE2D510461653ADC922 /* TiltControlView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		DE79A403C0D58683CD083C6C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				6134FF89D8B27EBCEE8E9FA2 /* Assets.xcassets */,
+				874233CF05AE61487F53D97E /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		ECA8AB5E654C2D357D35243D /* render */ = {
+			isa = PBXGroup;
+			children = (
+				0D05A24099BA8753B1265F60 /* color_table.cpp */,
+				A5EC58DF408132775393AA21 /* metal_interop.mm */,
+			);
+			path = render;
+			sourceTree = "<group>";
+		};
+		EDF3BA57E7ADEFED932E5CF5 /* shared_src */ = {
+			isa = PBXGroup;
+			children = (
+				A509CA7D957DD10C8BC2BB60 /* app.cpp */,
+				56392CF250C39188154F4E75 /* historic.cpp */,
+				3EEAB833342DF9A49C3D72DE /* metal */,
+				63C5EADEBA6C0803511AF029 /* net */,
+				50723787B5D5D75AC7D87F8C /* nexrad */,
+				ECA8AB5E654C2D357D35243D /* render */,
+			);
+			path = shared_src;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B3D1E637D076F9AF5887F8D7 /* macdar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A8304816E5B077655A3517CA /* Build configuration list for PBXNativeTarget "macdar" */;
+			buildPhases = (
+				0BBBF4CB688DE2D0DDBAED17 /* Sources */,
+				57518F2D811647D6B486CF31 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = macdar;
+			packageProductDependencies = (
+			);
+			productName = macdar;
+			productReference = 197A675C6C6234CAFD90664D /* macdar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CE5E8285CCED595E79865B46 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					B3D1E637D076F9AF5887F8D7 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 800F77BBB7A95FE6461B4AD1 /* Build configuration list for PBXProject "macdar" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 898CC5A00BEE6BFDC5174E68;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8B934C549A30B4988B5F11BB /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B3D1E637D076F9AF5887F8D7 /* macdar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		57518F2D811647D6B486CF31 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F147EC209689EFD9EC009E4 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0BBBF4CB688DE2D0DDBAED17 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				805E1B9C2D3571B8BBC71F6D /* AppState.swift in Sources */,
+				F36403B7F386AAE4023492F9 /* ContentView.swift in Sources */,
+				B0D233B8CF3CFAEDF19CBE45 /* MetalRenderCoordinator.swift in Sources */,
+				1941FC1609FF7687BC5F528E /* MetalRenderer.mm in Sources */,
+				A6FE7B106231089666B0ECB5 /* ProductPickerView.swift in Sources */,
+				8CA371C6CD3DDC511374B614 /* RadarEngine.mm in Sources */,
+				D7019E87AC4ED79187A4F1CC /* RadarMapView.swift in Sources */,
+				6DC52B2584CF22E8FD13105C /* SettingsView.swift in Sources */,
+				7992AEC34DEB95E39A1080FD /* StationPickerSheet.swift in Sources */,
+				3426E29FD0E8879429794DC9 /* TiltControlView.swift in Sources */,
+				8B9C5CD8D687256752571A51 /* app.cpp in Sources */,
+				F920B71F9AC21A37C3C5F198 /* color_table.cpp in Sources */,
+				A2091DFF59FD76718055DD12 /* downloader.cpp in Sources */,
+				70F075560E798A7F975968BC /* gpu_pipeline.metal in Sources */,
+				197AD763AFEA436C8B476AB2 /* historic.cpp in Sources */,
+				23EC23724FE30521011C5655 /* level2_parser.cpp in Sources */,
+				477544111B6AE49ADBD20BFD /* macdarApp.swift in Sources */,
+				023DFCA67D9045326DEA8CDC /* metal_interop.mm in Sources */,
+				3AD79A3551E50E11F40E93E5 /* polling_links.cpp in Sources */,
+				64888BB989DDDB9D8A287F43 /* renderer.metal in Sources */,
+				0D7E40BFC3ED261F0A77A785 /* volume3d.metal in Sources */,
+				3106779312B84609EBD10B07 /* warnings.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		14CFE24FB1D637B638BE28F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/shared_src",
+					"$(PROJECT_DIR)/shared_src/metal",
+					"$(PROJECT_DIR)/macdar/Bridge",
+					"$(PROJECT_DIR)/macdar/ThirdParty",
+				);
+				INFOPLIST_FILE = macdar/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = (
+					"-lz",
+					"-lbz2",
+					"-lcurl",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fahrenheitresearch.macdar;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OBJC_BRIDGING_HEADER = "macdar/Bridge/macdar-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		20BF62D33A7497279701FDA2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = macdar/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4FEAE10A5908B064A3BB451F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = macdar/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		8B47D1F43AED9D2513756F91 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/shared_src",
+					"$(PROJECT_DIR)/shared_src/metal",
+					"$(PROJECT_DIR)/macdar/Bridge",
+					"$(PROJECT_DIR)/macdar/ThirdParty",
+				);
+				INFOPLIST_FILE = macdar/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-lz",
+					"-lbz2",
+					"-lcurl",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fahrenheitresearch.macdar;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OBJC_BRIDGING_HEADER = "macdar/Bridge/macdar-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		800F77BBB7A95FE6461B4AD1 /* Build configuration list for PBXProject "macdar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B47D1F43AED9D2513756F91 /* Debug */,
+				14CFE24FB1D637B638BE28F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A8304816E5B077655A3517CA /* Build configuration list for PBXNativeTarget "macdar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				20BF62D33A7497279701FDA2 /* Debug */,
+				4FEAE10A5908B064A3BB451F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CE5E8285CCED595E79865B46 /* Project object */;
+}
