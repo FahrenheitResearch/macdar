@@ -1,4 +1,6 @@
 #include "metal_common.h"
+#include <metal_stdlib>
+using namespace metal;
 
 // ── Helper Functions ────────────────────────────────────────
 

@@ -64,6 +64,8 @@ inline float wrapAngleDeg(float angle) {
     return angle;
 }
 
+#ifndef PRODUCT_THRESHOLD_DEFINED
+#define PRODUCT_THRESHOLD_DEFINED
 inline float productThreshold(int product, float dbz_min) {
     if (product == PROD_VEL || product == PROD_ZDR || product == PROD_KDP || product == PROD_PHI)
         return -999.0f;
@@ -78,6 +80,7 @@ inline bool passesThreshold(int product, float value, float threshold) {
         return abs(value) >= max(threshold, 0.0f);
     return value >= productThreshold(product, threshold);
 }
+#endif
 
 inline void productColorRange(int product, thread float& min_val, thread float& max_val) {
     switch (product) {

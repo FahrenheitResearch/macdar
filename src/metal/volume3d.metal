@@ -3,8 +3,9 @@
 // 3D volume building, smoothing, ray-marching, and cross-section kernels.
 // ────────────────────────────────────────────────────────────────
 
-// metal_common.h, <metal_stdlib>, and using namespace metal are provided
-// by renderer.metal which is concatenated before this file at runtime.
+#include "metal_common.h"
+#include <metal_stdlib>
+using namespace metal;
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -87,7 +88,23 @@ inline void productRange(int product, thread float& min_val, thread float& max_v
     }
 }
 
-// productThreshold() and passesThreshold() are defined in renderer.metal
+#ifndef PRODUCT_THRESHOLD_DEFINED
+#define PRODUCT_THRESHOLD_DEFINED
+inline float productThreshold(int product, float dbz_min) {
+    if (product == PROD_VEL || product == PROD_ZDR || product == PROD_KDP || product == PROD_PHI)
+        return -999.0f;
+    if (product == PROD_CC) return 0.3f;
+    if (product == PROD_SW) return 0.5f;
+    return dbz_min;
+}
+
+inline bool passesThreshold(int product, float value, float threshold) {
+    if (value <= -998.0f) return false;
+    if (product == PROD_VEL)
+        return abs(value) >= max(threshold, 0.0f);
+    return value >= productThreshold(product, threshold);
+}
+#endif
 // and available here when the shader sources are concatenated at runtime.
 
 inline float sampleMagnitude(int product, float value) {
