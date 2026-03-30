@@ -1,6 +1,7 @@
 #include "app.h"
 #include "nexrad/stations.h"
 #include "nexrad/level2_parser.h"
+#include "data/us_boundaries.h"
 #include "net/aws_nexrad.h"
 #include <cstdio>
 #include <cstring>
@@ -1572,6 +1573,45 @@ void App::render() {
             // Copy to its own Metal texture
             m_xsTex.updateFromBuffer(m_d_xsOutput, m_xsWidth, m_xsHeight,
                                      m_renderer->getQueue());
+        }
+
+        // Draw state boundaries into the output buffer (CPU-side line drawing)
+        {
+            uint32_t* px = (uint32_t*)m_d_compositeOutput.contents;
+            int w = m_viewport.width, h = m_viewport.height;
+            double cx = m_viewport.center_lon, cy = m_viewport.center_lat;
+            double z = m_viewport.zoom;
+            uint32_t lineColor = 0xFF555540; // ABGR: muted dark teal
+
+            for (int i = 0; i < US_STATE_LINE_COUNT; i++) {
+                float lat1 = US_STATE_LINES[i * 4 + 0];
+                float lon1 = US_STATE_LINES[i * 4 + 1];
+                float lat2 = US_STATE_LINES[i * 4 + 2];
+                float lon2 = US_STATE_LINES[i * 4 + 3];
+
+                int x1 = (int)((lon1 - cx) * z + w * 0.5);
+                int y1 = (int)((cy - lat1) * z + h * 0.5);
+                int x2 = (int)((lon2 - cx) * z + w * 0.5);
+                int y2 = (int)((cy - lat2) * z + h * 0.5);
+
+                // Clip: skip if entirely off screen
+                if ((x1 < -10 && x2 < -10) || (x1 > w + 10 && x2 > w + 10)) continue;
+                if ((y1 < -10 && y2 < -10) || (y1 > h + 10 && y2 > h + 10)) continue;
+
+                // Bresenham line drawing
+                int dx = abs(x2 - x1), dy = abs(y2 - y1);
+                int sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+                int err = dx - dy;
+                int steps = 0, maxSteps = dx + dy + 1;
+                while (steps++ < maxSteps) {
+                    if (x1 >= 0 && x1 < w && y1 >= 0 && y1 < h)
+                        px[y1 * w + x1] = lineColor;
+                    if (x1 == x2 && y1 == y2) break;
+                    int e2 = 2 * err;
+                    if (e2 > -dy) { err -= dy; x1 += sx; }
+                    if (e2 < dx) { err += dx; y1 += sy; }
+                }
+            }
         }
 
         // Metal command buffer synchronization is handled internally by the renderer
