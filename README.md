@@ -17,15 +17,17 @@ GPU-accelerated NEXRAD weather radar for Mac and iPhone. Metal compute pipeline 
 - GR/RadarScope-style color table import
 - Pinch-to-zoom, pan, click-to-select station
 
-## Download (macOS)
+## Install (macOS)
 
-Grab `macdar-macos.zip` from [Releases](https://github.com/FahrenheitResearch/macdar/releases), unzip, and double-click `macdar.app`.
+Paste this in Terminal:
 
-> **First launch:** If macOS says the app is "damaged", open Terminal and run:
-> ```bash
-> xattr -cr macdar.app
-> ```
-> Then double-click again. This is normal for apps not distributed through the App Store.
+```bash
+curl -sL https://raw.githubusercontent.com/FahrenheitResearch/macdar/main/install.sh | bash
+```
+
+Downloads, installs to `/Applications`, and launches. That's it.
+
+> Or grab `macdar-macos.zip` manually from [Releases](https://github.com/FahrenheitResearch/macdar/releases). If macOS says "damaged", run `xattr -cr macdar.app` first.
 
 ## Build from Source (macOS)
 
