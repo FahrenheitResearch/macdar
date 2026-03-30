@@ -583,15 +583,14 @@ void MetalRenderer::swapStationPointers(int idx, const GpuStationInfo& info,
 // ── Helper: Clear Output Buffer ────────────────────────────────
 
 void MetalRenderer::clearOutputBuffer(const GpuViewport& vp, id<MTLBuffer> output) {
-    if (!_clearPSO) {
-        // Fallback: CPU clear
-        size_t pixel_count = (size_t)vp.width * (size_t)vp.height;
-        uint32_t* ptr = (uint32_t*)output.contents;
-        for (size_t i = 0; i < pixel_count; i++)
-            ptr[i] = kBackgroundColor;
-        return;
-    }
+    // CPU clear — fast for shared-mode buffers, avoids kernel binding complexity
+    size_t pixel_count = (size_t)vp.width * (size_t)vp.height;
+    uint32_t* ptr = (uint32_t*)output.contents;
+    for (size_t i = 0; i < pixel_count; i++)
+        ptr[i] = kBackgroundColor;
+    return;
 
+    // GPU clear (disabled — binding mismatch to fix later)
     ClearParams params;
     params.width = vp.width;
     params.height = vp.height;
