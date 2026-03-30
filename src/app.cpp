@@ -341,9 +341,14 @@ App::App()
     : m_spatialGrid(std::make_unique<SpatialGrid>()) {}
 
 App::~App() {
+    // Stop all background work first (joins download threads so no callbacks fire)
     if (m_downloader) m_downloader->shutdown();
     m_historic.cancel();
     m_warnings.stop();
+
+    // Wait for any in-flight GPU work to finish
+    if (m_renderer) m_renderer->waitForGpu();
+
     invalidateFrameCache(true);
     m_d_xsOutput = nil;
     m_d_compositeOutput = nil;

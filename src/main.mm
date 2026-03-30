@@ -242,13 +242,17 @@ int main(int argc, char** argv) {
                     }
                 }
 
+                // Clear global pointer and remove gesture monitors BEFORE App destructs
+                // (prevents callbacks from accessing destroyed state)
                 g_app = nullptr;
-            }
-        }
 
-        // Clean up gesture monitors
-        [NSEvent removeMonitor:magnifyMonitor];
-        [NSEvent removeMonitor:smartZoomMonitor];
+                [NSEvent removeMonitor:magnifyMonitor];
+                [NSEvent removeMonitor:smartZoomMonitor];
+                magnifyMonitor = nil;
+                smartZoomMonitor = nil;
+            }
+            // App destructor runs here — downloads stopped, GPU flushed, then Metal objects released
+        }
 
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplGlfw_Shutdown();
@@ -257,7 +261,7 @@ int main(int argc, char** argv) {
         glfwDestroyWindow(window);
         glfwTerminate();
 
-        printf("CURSDAR2 shutdown complete.\n");
+        printf("macdar shutdown complete.\n");
         return exitCode;
     }
 }
