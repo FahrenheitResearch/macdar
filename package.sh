@@ -64,13 +64,58 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc code sign (avoids "damaged" Gatekeeper error)
-codesign --force --deep -s - "$APP"
+# Entitlements for hardened runtime (required for notarization)
+cat > /tmp/macdar-entitlements.plist << 'ENT'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
+ENT
 
-# Create ZIP for distribution
+# Code sign with Developer ID (or Apple Development if no Developer ID yet)
+IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+if [ -z "$IDENTITY" ]; then
+    IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')
+fi
+
+if [ -z "$IDENTITY" ]; then
+    echo "No signing identity found. Ad-hoc signing..."
+    codesign --force --deep -s - "$APP"
+else
+    echo "Signing with: $IDENTITY"
+    codesign --force --deep --options runtime \
+        --entitlements /tmp/macdar-entitlements.plist \
+        -s "$IDENTITY" "$APP"
+fi
+
+# Create ZIP for notarization + distribution
 ZIP="macdar-macos.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
+
+# Notarize if credentials are available
+if xcrun notarytool history --keychain-profile "macdar" &>/dev/null; then
+    echo ""
+    echo "Submitting for notarization..."
+    xcrun notarytool submit "$ZIP" --keychain-profile "macdar" --wait
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$APP"
+    # Re-zip with stapled ticket
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    echo ""
+    echo "Notarized and stapled."
+else
+    echo ""
+    echo "Skipping notarization (no keychain profile 'macdar' found)."
+    echo "Run: xcrun notarytool store-credentials macdar"
+fi
 
 echo ""
 echo "Packaged: $APP"
