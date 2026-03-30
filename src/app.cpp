@@ -1543,7 +1543,7 @@ void App::render() {
                                       m_activeProduct, activeThreshold,
                                       m_d_compositeOutput, srvSpd, srvDir);
         } else {
-            memset(m_d_compositeOutput.contents, 0x0F,
+            memset(m_d_compositeOutput.contents, 0x00,
                    (size_t)m_viewport.width * m_viewport.height * sizeof(uint32_t));
         }
         // Cross-section: render to separate texture for floating panel
@@ -1575,44 +1575,8 @@ void App::render() {
                                      m_renderer->getQueue());
         }
 
-        // Draw state boundaries into the output buffer (CPU-side line drawing)
-        {
-            uint32_t* px = (uint32_t*)m_d_compositeOutput.contents;
-            int w = m_viewport.width, h = m_viewport.height;
-            double cx = m_viewport.center_lon, cy = m_viewport.center_lat;
-            double z = m_viewport.zoom;
-            uint32_t lineColor = 0xFF555540; // ABGR: muted dark teal
-
-            for (int i = 0; i < US_STATE_LINE_COUNT; i++) {
-                float lat1 = US_STATE_LINES[i * 4 + 0];
-                float lon1 = US_STATE_LINES[i * 4 + 1];
-                float lat2 = US_STATE_LINES[i * 4 + 2];
-                float lon2 = US_STATE_LINES[i * 4 + 3];
-
-                int x1 = (int)((lon1 - cx) * z + w * 0.5);
-                int y1 = (int)((cy - lat1) * z + h * 0.5);
-                int x2 = (int)((lon2 - cx) * z + w * 0.5);
-                int y2 = (int)((cy - lat2) * z + h * 0.5);
-
-                // Clip: skip if entirely off screen
-                if ((x1 < -10 && x2 < -10) || (x1 > w + 10 && x2 > w + 10)) continue;
-                if ((y1 < -10 && y2 < -10) || (y1 > h + 10 && y2 > h + 10)) continue;
-
-                // Bresenham line drawing
-                int dx = abs(x2 - x1), dy = abs(y2 - y1);
-                int sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
-                int err = dx - dy;
-                int steps = 0, maxSteps = dx + dy + 1;
-                while (steps++ < maxSteps) {
-                    if (x1 >= 0 && x1 < w && y1 >= 0 && y1 < h)
-                        px[y1 * w + x1] = lineColor;
-                    if (x1 == x2 && y1 == y2) break;
-                    int e2 = 2 * err;
-                    if (e2 > -dy) { err -= dy; x1 += sx; }
-                    if (e2 < dx) { err += dx; y1 += sy; }
-                }
-            }
-        }
+        // Boundary overlay: rasterize only when viewport changes, then composite
+        rasterizeBoundaries();
 
         // Metal command buffer synchronization is handled internally by the renderer
         if (!m_singleStationMode) {
@@ -1620,6 +1584,71 @@ void App::render() {
                                           m_viewport.width, m_viewport.height,
                                           m_renderer->getQueue());
         }
+    }
+}
+
+void App::rasterizeBoundaries() {
+    int w = m_viewport.width, h = m_viewport.height;
+    double cx = m_viewport.center_lon, cy = m_viewport.center_lat;
+    double z = m_viewport.zoom;
+
+    // Check if cache is still valid
+    if (m_boundaryCacheW == w && m_boundaryCacheH == h &&
+        m_boundaryCacheCLat == cy && m_boundaryCacheCLon == cx &&
+        m_boundaryCacheZoom == z && !m_boundaryCache.empty()) {
+        return; // cache is current, nothing to do
+    }
+
+    // Re-rasterize boundaries into cache
+    size_t npx = (size_t)w * h;
+    m_boundaryCache.assign(npx, 0); // transparent
+    m_boundaryCacheW = w;
+    m_boundaryCacheH = h;
+    m_boundaryCacheCLat = cy;
+    m_boundaryCacheCLon = cx;
+    m_boundaryCacheZoom = z;
+
+    uint32_t lineColor = 0xFF555540; // ABGR: muted dark teal
+    uint32_t* px = m_boundaryCache.data();
+
+    for (int i = 0; i < US_STATE_LINE_COUNT; i++) {
+        float lat1 = US_STATE_LINES[i * 4 + 0];
+        float lon1 = US_STATE_LINES[i * 4 + 1];
+        float lat2 = US_STATE_LINES[i * 4 + 2];
+        float lon2 = US_STATE_LINES[i * 4 + 3];
+
+        int x1 = (int)((lon1 - cx) * z + w * 0.5);
+        int y1 = (int)((cy - lat1) * z + h * 0.5);
+        int x2 = (int)((lon2 - cx) * z + w * 0.5);
+        int y2 = (int)((cy - lat2) * z + h * 0.5);
+
+        if ((x1 < -10 && x2 < -10) || (x1 > w + 10 && x2 > w + 10)) continue;
+        if ((y1 < -10 && y2 < -10) || (y1 > h + 10 && y2 > h + 10)) continue;
+
+        int dx = abs(x2 - x1), dy = abs(y2 - y1);
+        int sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+        int err = dx - dy;
+        int steps = 0, maxSteps = dx + dy + 1;
+        while (steps++ < maxSteps) {
+            if (x1 >= 0 && x1 < w && y1 >= 0 && y1 < h)
+                px[y1 * w + x1] = lineColor;
+            if (x1 == x2 && y1 == y2) break;
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x1 += sx; }
+            if (e2 < dx) { err += dx; y1 += sy; }
+        }
+    }
+}
+
+void App::compositeBoundaries() {
+    int w = m_viewport.width, h = m_viewport.height;
+    if (m_boundaryCache.empty() || m_boundaryCacheW != w || m_boundaryCacheH != h) return;
+
+    uint32_t* dst = (uint32_t*)m_d_compositeOutput.contents;
+    const uint32_t* src = m_boundaryCache.data();
+    size_t npx = (size_t)w * h;
+    for (size_t i = 0; i < npx; i++) {
+        if (src[i]) dst[i] = src[i];
     }
 }
 
@@ -2036,6 +2065,10 @@ void App::uploadHistoricFrame(int frameIdx) {
 }
 
 // (Demo pack methods removed)
+
+void App::waitForGpu() {
+    if (m_renderer) m_renderer->waitForGpu();
+}
 
 void App::refreshData() {
     printf("Refreshing data from AWS...\n");

@@ -14,7 +14,7 @@ class AppState: ObservableObject {
     @Published var productName: String = "REF"
     @Published var mosaicMode: Bool = false
     @Published var isRendering: Bool = true
-    @Published var maxActiveStations: Int = 1  // 1 default, up to 10
+    @Published var maxActiveStations: Int = 1
 
     // Product names
     let productNames = ["REF", "VEL", "SW", "ZDR", "CC", "KDP", "PHI"]
@@ -63,7 +63,6 @@ class AppState: ObservableObject {
         isRendering = true
         if hasLaunched {
             // Only refresh on actual resume from background, not initial launch
-            // engine.refreshData() -- disabled: use single-station polling instead
         }
         hasLaunched = true
     }

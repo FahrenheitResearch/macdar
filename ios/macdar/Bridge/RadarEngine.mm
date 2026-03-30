@@ -142,22 +142,27 @@
         double lon = vp.center_lon + (x - vp.width * 0.5) / vp.zoom;
         double lat = vp.center_lat - (y - vp.height * 0.5) / vp.zoom;
 
-        // Find nearest NEXRAD station from the full station list
+        // Find nearest NEXRAD station, but only if within tap radius
         int bestIdx = -1;
-        float bestDist = 1e9f;
+        float bestScreenDist2 = 1e9f;
         std::vector<StationUiState> stationList = _app->stations();
         for (const auto& st : stationList) {
-            float dlat = st.lat - (float)lat;
-            float dlon = st.lon - (float)lon;
-            float dist = dlat * dlat + dlon * dlon;
-            if (dist < bestDist) {
-                bestDist = dist;
+            // Compute screen-space distance (in pixels)
+            double sx = (st.lon - vp.center_lon) * vp.zoom + vp.width * 0.5;
+            double sy = (vp.center_lat - st.lat) * vp.zoom + vp.height * 0.5;
+            double dx = sx - x;
+            double dy = sy - y;
+            float dist2 = (float)(dx * dx + dy * dy);
+            if (dist2 < bestScreenDist2) {
+                bestScreenDist2 = dist2;
                 bestIdx = st.index;
             }
         }
 
-        // If a different station is closer, select it (downloads if needed)
-        if (bestIdx >= 0 && bestIdx != _app->activeStation()) {
+        // Only select if tap is within 44pt * scale = ~132px on 3x display
+        float maxDist = 132.0f; // pixels
+        if (bestIdx >= 0 && bestScreenDist2 < maxDist * maxDist &&
+            bestIdx != _app->activeStation()) {
             _app->selectStation(bestIdx, true);
         }
     }
@@ -352,6 +357,22 @@
     _maxActiveStations = MIN(MAX(maxActiveStations, 1), 10);
 }
 
+#pragma mark - Boundary compositing
+
+- (void)compositeBoundaries {
+    @synchronized (self) {
+        if (!_initialized) return;
+        _app->compositeBoundaries();
+    }
+}
+
+- (void)waitForGpu {
+    @synchronized (self) {
+        if (!_initialized) return;
+        _app->waitForGpu();
+    }
+}
+
 #pragma mark - Data
 
 - (void)refreshData {
@@ -381,6 +402,16 @@
     @synchronized (self) {
         if (!_initialized) return 28.0;
         return _app->viewport().zoom;
+    }
+}
+
+- (void)setViewportCenter:(double)lat lon:(double)lon zoom:(double)zoom {
+    @synchronized (self) {
+        if (!_initialized) return;
+        Viewport& vp = _app->viewport();
+        vp.center_lat = lat;
+        vp.center_lon = lon;
+        vp.zoom = zoom;
     }
 }
 

@@ -4,7 +4,7 @@ using namespace metal;
 
 // ── Constants ──────────────────────────────────────────────────
 
-constant uint kBackgroundColor = 0xFF140F0Fu;   // ABGR: dark background
+constant uint kBackgroundColor = 0x00000000u;   // transparent background
 constant ulong kEmptyForwardPixel = ~0ull;
 
 // SPATIAL_GRID_W, SPATIAL_GRID_H, MAX_STATIONS_PER_CELL, MAX_STATIONS
@@ -288,7 +288,7 @@ kernel void native_render(
     float lat = params.vp.center_lat - (py - params.vp.height * 0.5f) * params.vp.deg_per_pixel_y;
 
     // Background
-    uint result = makeRGBA(15, 15, 20, 255);
+    uint result = 0x00000000u; // transparent background
 
     // Spatial grid lookup
     float gfx = (lon - grid->min_lon) / (grid->max_lon - grid->min_lon) * SPATIAL_GRID_W;

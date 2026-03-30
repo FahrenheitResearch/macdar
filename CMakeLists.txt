@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(cursdar2 LANGUAGES C CXX OBJCXX)
+project(macdar LANGUAGES C CXX OBJCXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -120,7 +120,7 @@ else()
 endif()
 
 # ── Executable ────────────────────────────────────────────────────────
-add_executable(cursdar2
+add_executable(macdar
     src/main.mm
     src/app.cpp
     src/historic.cpp
@@ -134,7 +134,7 @@ add_executable(cursdar2
     src/ui/ui.cpp
 )
 
-target_include_directories(cursdar2 PRIVATE
+target_include_directories(macdar PRIVATE
     src
     src/metal
 )
@@ -159,7 +159,7 @@ find_package(CURL REQUIRED)
 find_package(ZLIB REQUIRED)
 
 # ── Link libraries & frameworks ───────────────────────────────────────
-target_link_libraries(cursdar2 PRIVATE
+target_link_libraries(macdar PRIVATE
     imgui
     glfw
     BZip2::BZip2
@@ -175,12 +175,12 @@ target_link_libraries(cursdar2 PRIVATE
 )
 
 # ── Shader dependency & post-build copy ───────────────────────────────
-add_dependencies(cursdar2 metal_shaders)
+add_dependencies(macdar metal_shaders)
 
 if(METAL_COMPILER_FOUND EQUAL 0)
-    add_custom_command(TARGET cursdar2 POST_BUILD
+    add_custom_command(TARGET macdar POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_BINARY_DIR}/default.metallib
-            $<TARGET_FILE_DIR:cursdar2>/default.metallib
+            $<TARGET_FILE_DIR:macdar>/default.metallib
     )
 endif()

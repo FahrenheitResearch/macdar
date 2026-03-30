@@ -10,3 +10,8 @@ imgui.ini
 *.user
 *.sln
 *.vcxproj*
+*.xcuserstate
+xcuserdata/
+DerivedData/
+macdar.app/
+macdar-macos.zip

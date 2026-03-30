@@ -19,6 +19,7 @@ struct StationPickerSheet: View {
                 Button(action: {
                     appState.engine.selectStation(station.index, centerView: true)
                     appState.syncFromEngine()
+                    NotificationCenter.default.post(name: .radarStationChanged, object: nil)
                     dismiss()
                 }) {
                     HStack {

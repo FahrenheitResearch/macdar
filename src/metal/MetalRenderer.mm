@@ -13,7 +13,7 @@
 
 // ── Color Constants ────────────────────────────────────────────
 
-static constexpr uint32_t kBackgroundColor = 0xFF140F0Fu;
+static constexpr uint32_t kBackgroundColor = 0x00000000u; // transparent
 static constexpr uint64_t kEmptyForwardPixel = ~0ull;
 
 // ── Color Table Helpers ────────────────────────────────────────
@@ -558,6 +558,14 @@ void MetalRenderer::uploadStationData(int idx, const GpuStationInfo& info,
             }
         }
     }
+}
+
+void MetalRenderer::waitForGpu() {
+    // Submit an empty command buffer and wait for it to complete.
+    // This guarantees all previously committed work is finished.
+    id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
+    [cmdBuf commit];
+    [cmdBuf waitUntilCompleted];
 }
 
 void MetalRenderer::syncStation(int idx) {

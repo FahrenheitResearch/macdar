@@ -61,6 +61,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL mosaicMode;
 @property (nonatomic) int maxActiveStations;
 
+// Boundary compositing (call after GPU work from previous frame is done)
+- (void)compositeBoundaries;
+- (void)waitForGpu;
+
 // Data
 - (void)refreshData;
 
@@ -68,6 +72,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) double centerLat;
 @property (nonatomic, readonly) double centerLon;
 @property (nonatomic, readonly) double zoom;
+- (void)setViewportCenter:(double)lat lon:(double)lon zoom:(double)zoom;
 @property (nonatomic, readonly) float cursorLat;
 @property (nonatomic, readonly) float cursorLon;
 

@@ -8,7 +8,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
     let commandQueue: MTLCommandQueue
     weak var appState: AppState?
 
-    // For blitting compute output to screen
+    // For blitting compute output to screen with alpha
     private var pipelineState: MTLRenderPipelineState?
     private var outputTexture: MTLTexture?
     private var outputTextureSize: (Int, Int) = (0, 0)
@@ -48,7 +48,8 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         fragment float4 blit_fragment(VertexOut in [[stage_in]],
                                        texture2d<float> tex [[texture(0)]]) {
             constexpr sampler s(filter::nearest);
-            return tex.sample(s, in.texCoord);
+            float4 c = tex.sample(s, in.texCoord);
+            return c; // alpha preserved for transparency
         }
         """
 
@@ -58,6 +59,12 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
             descriptor.vertexFunction = library.makeFunction(name: "blit_vertex")
             descriptor.fragmentFunction = library.makeFunction(name: "blit_fragment")
             descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            // Enable alpha blending so transparent pixels show the map underneath
+            descriptor.colorAttachments[0].isBlendingEnabled = true
+            descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+            descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+            descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+            descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
             pipelineState = try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
             print("MetalRenderCoordinator: Failed to build blit pipeline: \(error)")
@@ -78,7 +85,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
 
     private func initEngineIfNeeded(width: Int, height: Int) {
         guard !engineInitialized && width > 0 && height > 0 else { return }
-        print("MetalRenderCoordinator: Initializing engine \(width)x\(height) on thread \(Thread.isMainThread ? "MAIN" : "BG")")
+        print("MetalRenderCoordinator: Initializing engine \(width)x\(height)")
         appState?.initialize(width: width, height: height)
         engineInitialized = true
     }
@@ -96,55 +103,55 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        guard isRendering else { return }
-
-        // Try to init if we haven't yet
-        if !engineInitialized {
-            let size = view.drawableSize
-            if size.width > 0 && size.height > 0 {
-                initEngineIfNeeded(width: Int(size.width), height: Int(size.height))
+        guard isRendering, engineInitialized else {
+            if !engineInitialized {
+                let size = view.drawableSize
+                if size.width > 0 && size.height > 0 {
+                    initEngineIfNeeded(width: Int(size.width), height: Int(size.height))
+                }
             }
             return
         }
-
-        guard let drawable = view.currentDrawable,
-              let renderPassDesc = view.currentRenderPassDescriptor else { return }
 
         let w = engine.viewportWidth()
         let h = engine.viewportHeight()
         if w <= 0 || h <= 0 { return }
 
-        // 1. Copy PREVIOUS frame's output to texture (already complete from last frame's GPU work)
-        if let outputBuf = engine.outputBuffer() {
-            ensureOutputTexture(width: Int(w), height: Int(h))
-            if let tex = outputTexture {
-                let region = MTLRegionMake2D(0, 0, Int(w), Int(h))
-                tex.replace(region: region, mipmapLevel: 0,
-                            withBytes: outputBuf.contents(),
-                            bytesPerRow: Int(w) * 4)
-            }
-        }
-
-        // 2. Blit texture to drawable (uses previous frame's data — 1 frame latency, invisible)
-        if let tex = outputTexture,
-           let commandBuffer = commandQueue.makeCommandBuffer(),
-           let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDesc),
-           let pipeline = pipelineState {
-            encoder.setRenderPipelineState(pipeline)
-            encoder.setFragmentTexture(tex, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            encoder.endEncoding()
-            commandBuffer.present(drawable)
-            commandBuffer.commit()
-        }
-
-        // 3. Kick off THIS frame's compute (async, no wait — GPU works while we return)
-        engine.update(withDeltaTime: Float(1.0 / Double(max(view.preferredFramesPerSecond, 1))))
+        // Update + render (render dispatches GPU async, rasterizes boundary cache)
+        let dt = Float(1.0 / Double(max(view.preferredFramesPerSecond, 1)))
+        engine.update(withDeltaTime: dt)
         engine.render()
 
-        // Sync UI state periodically (throttled, on main thread)
+        // Wait for GPU, then composite boundaries
+        engine.waitForGpu()
+        engine.compositeBoundaries()
+
+        // Copy output to texture
+        guard let outputBuf = engine.outputBuffer() else { return }
+        ensureOutputTexture(width: Int(w), height: Int(h))
+        guard let tex = outputTexture else { return }
+        let region = MTLRegionMake2D(0, 0, Int(w), Int(h))
+        tex.replace(region: region, mipmapLevel: 0,
+                    withBytes: outputBuf.contents(),
+                    bytesPerRow: Int(w) * 4)
+
+        // Blit to drawable
+        guard let drawable = view.currentDrawable,
+              let renderPassDesc = view.currentRenderPassDescriptor,
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDesc),
+              let pipeline = pipelineState else { return }
+
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setFragmentTexture(tex, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+
+        // Sync UI state periodically
         let now = CACurrentMediaTime()
-        if now - lastSyncTime > 0.3 {
+        if now - lastSyncTime > 0.25 {
             lastSyncTime = now
             DispatchQueue.main.async { [weak self] in
                 self?.appState?.syncFromEngine()

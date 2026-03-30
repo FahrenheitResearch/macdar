@@ -165,6 +165,8 @@ public:
 
     // Trigger refresh from AWS
     void refreshData();
+    void waitForGpu();
+    void compositeBoundaries();
     void loadMarch302025Snapshot(bool lowestSweepOnly = false);
     bool loadArchiveRange(const std::string& station,
                           int year, int month, int day,
@@ -271,6 +273,12 @@ private:
     bool m_needsRerender = true;
     bool m_needsComposite = true;
     bool m_singleStationMode = false;  // iOS: only poll active station
+
+    // Cached state boundary overlay (avoids 51K Bresenham lines per frame)
+    std::vector<uint32_t> m_boundaryCache;
+    int  m_boundaryCacheW = 0, m_boundaryCacheH = 0;
+    double m_boundaryCacheCLat = 0, m_boundaryCacheCLon = 0, m_boundaryCacheZoom = 0;
+    void rasterizeBoundaries();
 
     // Auto-refresh timer
     std::chrono::steady_clock::time_point m_lastRefresh;

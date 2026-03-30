@@ -1,131 +1,77 @@
-# cursdar2
+# macdar
 
-`cursdar2` is a CUDA-native NEXRAD workstation focused on fast live Level 2 ingest, responsive 2D/3D radar rendering, archive review, and warning-overlay analysis.
+GPU-accelerated NEXRAD weather radar for Mac and iPhone. Metal compute pipeline with live Level 2 data from AWS.
 
-It is being built as a standalone successor to `cursdar`: same GPU-first mentality, much cleaner operator workflow, and a repo that can evolve independently.
+![macOS](https://img.shields.io/badge/macOS-14%2B-blue) ![iOS](https://img.shields.io/badge/iOS-17%2B-blue) ![Metal](https://img.shields.io/badge/GPU-Metal-orange)
 
-## Highlights
+## Features
 
-- Live NEXRAD Level 2 ingest from AWS
-- Fast single-site 2D rendering with working tilt stepping
-- National mosaic rendering across the radar network
-- Real-time 3D volume mode
-- Draggable vertical cross-sections
-- Historic case playback with frame scrubbing
-- Archive snapshot loading, including the March 30, 2025 multi-site case
-- Live and historic warning polygons, watches, and related alert overlays
-- Highly configurable warning styling:
-  - per-category toggles
-  - outline/fill controls
-  - opacity and line scaling
-  - custom colors
-- Experimental storm interrogation overlays:
-  - TDS markers
-  - hail markers
-  - mesocyclone / TVS markers
+- Live NEXRAD Level 2 ingest from AWS (no API key needed)
+- Single-site and national mosaic rendering
+- 7 radar products: REF, VEL, SW, ZDR, CC, KDP, PHI
+- Tilt browsing across all elevation angles
+- 3D volume rendering and cross-sections (macOS)
 - Storm-relative velocity mode
-- GR / RadarScope-style color table import
-- Early GR-style polling link intake
-- Docked workstation UI with station browser, inspector, warnings panel, and historic timeline
+- Live NWS warning polygon overlays
+- Historic event playback with frame scrubbing
+- GR/RadarScope-style color table import
+- Pinch-to-zoom, pan, click-to-select station
 
-## Live Data Model
+## Download (macOS)
 
-`cursdar2` now uses tiered live polling instead of a blunt full-network refresh loop.
+Grab `macdar-macos.zip` from [Releases](https://github.com/FahrenheitResearch/macdar/releases), unzip, and double-click `macdar.app`.
 
-- Active station: fast polling for newest available scans
-- In-view stations: medium cadence polling
-- Background stations: slower maintenance polling
-- Warning overlays: separate live polling loop
+> First launch: right-click → Open (macOS Gatekeeper blocks unsigned apps on first run).
 
-Once a station has already loaded a scan, the app uses incremental S3 listing against the last known volume key instead of re-listing the entire day each time. That keeps the hot path much lighter while still picking up newly published volumes quickly.
-
-Practical note: display latency is still bounded by upstream publication. The app can only render a scan once NOAA/AWS has published a complete object.
-
-## Current Feature Surface
-
-Implemented now:
-
-- Standalone `cursdar2` source tree and build target
-- Live single-site view
-- Live national mosaic
-- 3D volume rendering
-- Cross-sections
-- Tilt browsing in single-radar mode
-- Archive playback
-- Archive snapshot loading
-- Live warning overlays
-- Historic warning overlays matched to archive timestamps
-- Warning customization controls
-- Color table import and per-product reset
-- Polling-link fetch and inspection
-- CUDA-backed rendering pipeline
-
-Not finished yet:
-
-- Full GR2 feature parity
-- Full placefile rendering
-- Measurement / interrogation tools
-- Broader polling-link product support
-- Long-duration operational validation across many live weather events
-
-## Build Requirements
-
-### Windows
-
-- NVIDIA GPU with CUDA support
-- CUDA Toolkit
-- Visual Studio 2022 Build Tools
-- Ninja
-
-### Linux
-
-- NVIDIA GPU with CUDA support
-- CUDA Toolkit
-- CMake
-- A recent C++17 compiler
-
-## Build
-
-### Windows
-
-```bat
-build.bat
-```
-
-Binary output:
-
-```text
-build/cursdar2.exe
-```
-
-### Linux
+## Build from Source (macOS)
 
 ```bash
-chmod +x build.sh
+git clone https://github.com/FahrenheitResearch/macdar.git
+cd macdar
 ./build.sh
+./build/macdar
 ```
 
-## Controls
+Requires macOS 14+, Xcode CLT (`xcode-select --install`), CMake (`brew install cmake`). Dependencies fetched automatically.
 
-- `1-7`: select radar product
-- `Left` / `Right`: cycle products
-- `Up` / `Down`: cycle tilts
-- `A`: toggle national mosaic
-- `V`: toggle 3D volume
-- `X`: toggle cross-section
-- `S`: toggle storm-relative velocity
-- `R`: refresh live data
-- `Home`: reset to CONUS
-- `Escape`: return to auto-track
-- `Space`: play / pause historic playback
+## iOS
 
-## UI Notes
+Open `ios/macdar.xcodeproj` in Xcode (or generate with `cd ios && xcodegen`), select your team, build and run on device.
 
-- The inspector shows the latest scan time for the active site.
-- The warnings panel can show live or historic polygons depending on mode.
-- Color tables can be loaded from the operator console with a file browser.
-- Polling links are currently ingested and inspected, but not yet fully rendered as full GR-style placefile content.
+Requires:
+- Xcode 15+
+- iOS 17+ device
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) if regenerating the project
 
-## Status
+## Controls (macOS)
 
-This is already a real GPU radar workstation, but it is still an active build-out rather than a finished operational replacement for mature commercial software. The fast path is there now; the remaining work is on feature depth, workflow polish, and repeated validation with real events.
+| Key | Action |
+|-----|--------|
+| `1-7` | Select radar product |
+| `Left/Right` | Cycle products |
+| `Up/Down` | Cycle tilts |
+| `A` | Toggle national mosaic |
+| `V` | Toggle 3D volume |
+| `X` | Toggle cross-section |
+| `S` | Storm-relative velocity |
+| `R` | Refresh live data |
+| Scroll | Pan |
+| Pinch | Zoom |
+| Click | Select nearest station |
+
+## Architecture
+
+13 Metal compute kernels ported from CUDA:
+- Forward rasterization with 32-bit atomic depth compositing
+- Spatial grid acceleration for mosaic rendering
+- 3D volume building, smoothing, and ray marching
+- GPU-accelerated Level 2 parsing pipeline
+- Hardware-interpolated 1D color lookup textures
+
+## Origin
+
+Metal port of [cursdar2](https://github.com/FahrenheitResearch/cursdar2) (CUDA). Same rendering pipeline, runs on Apple Silicon instead of NVIDIA.
+
+## License
+
+MIT

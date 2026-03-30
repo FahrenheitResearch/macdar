@@ -36,7 +36,7 @@
 		0C4E90065D5334FFE3CB7959 /* gpu_pipeline.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = gpu_pipeline.metal; sourceTree = "<group>"; };
 		0D05A24099BA8753B1265F60 /* color_table.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = color_table.cpp; sourceTree = "<group>"; };
 		12EA69028CFF51E1DA93AADB /* warnings.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = warnings.cpp; sourceTree = "<group>"; };
-		197A675C6C6234CAFD90664D /* macdar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = macdar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		197A675C6C6234CAFD90664D /* macdar.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = macdar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		19BE94434DFF415B3E77E064 /* macdar-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "macdar-Bridging-Header.h"; sourceTree = "<group>"; };
 		2AD9431781C33A62EA2A936E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		439A452E888E6A427096B803 /* RadarEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RadarEngine.mm; sourceTree = "<group>"; };
@@ -223,6 +223,7 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					B3D1E637D076F9AF5887F8D7 = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -369,7 +370,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = X65S282G57;
 				INFOPLIST_FILE = macdar/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -385,7 +385,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = X65S282G57;
 				INFOPLIST_FILE = macdar/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

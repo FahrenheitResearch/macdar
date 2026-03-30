@@ -141,6 +141,9 @@ public:
     void buildSpatialGridGpu(const GpuStationInfo* stations, int num_stations,
                               SpatialGrid* grid_out);
 
+    // Wait for GPU to finish all pending work
+    void waitForGpu();
+
     // Sync
     void syncStation(int station_idx);
 
