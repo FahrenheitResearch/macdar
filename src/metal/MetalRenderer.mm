@@ -717,6 +717,9 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
 
     // Forward-render each visible station into the shared accum buffers
+    // Cap at 30 stations per frame to avoid GPU overload on weaker hardware
+    static constexpr int kMaxMosaicStations = 30;
+    int rendered = 0;
     for (int i = 0; i < num_stations && i < MAX_STATIONS; i++) {
         auto& st = _stations[i];
         if (!st.allocated || !st.info.has_product[product] || !st.gates[product])
@@ -730,6 +733,8 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
         float halfW = (float)vp.width * 0.5f * vp.deg_per_pixel_x;
         if (dlat > halfH + 5.0f || dlon > halfW + 5.0f)
             continue;
+
+        if (++rendered > kMaxMosaicStations) break;
 
         ForwardRenderParams fwdParams;
         fwdParams.vp = vp;

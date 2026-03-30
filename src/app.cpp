@@ -1523,7 +1523,7 @@ void App::render() {
                 cacheAnimFrame(cf, m_d_compositeOutput, gpuVp.width, gpuVp.height);
             }
         } else if (m_showAll) {
-            // Mosaic: all stations
+            // Mosaic: visible stations only, capped for performance
             if (m_gridDirty) buildSpatialGrid();
             std::vector<GpuStationInfo> gpuInfos(m_stations.size());
             {
@@ -1534,6 +1534,8 @@ void App::render() {
             m_renderer->renderNative(gpuVp, gpuInfos.data(), (int)m_stations.size(),
                               *m_spatialGrid, m_activeProduct, activeThreshold,
                               m_d_compositeOutput);
+            // Wait for mosaic GPU work before boundary composite
+            m_renderer->waitForGpu();
         } else if (m_activeStationIdx >= 0) {
             // Single station: fast path
             bool needsUpload = false;
@@ -1914,13 +1916,34 @@ void App::onMiddleDrag(double mx, double my) {
 }
 
 void App::toggleCrossSection() {
-    // Cross-section not yet available in Metal port
-    printf("Cross-section mode not yet available in Metal port\n");
+    m_crossSection = !m_crossSection;
+    invalidateFrameCache(true);
+    if (m_crossSection && m_activeStationIdx >= 0) {
+        // Set default cross-section line through station
+        std::lock_guard<std::mutex> lock(m_stationMutex);
+        if (m_activeStationIdx < (int)m_stations.size()) {
+            float sLat = m_stations[m_activeStationIdx].gpuInfo.lat;
+            float sLon = m_stations[m_activeStationIdx].gpuInfo.lon;
+            m_xsStartLat = sLat - 1.5f;
+            m_xsStartLon = sLon - 1.5f;
+            m_xsEndLat = sLat + 1.5f;
+            m_xsEndLon = sLon + 1.5f;
+        }
+        rebuildVolumeForCurrentSelection();
+    }
+    m_needsRerender = true;
+    printf("Cross-section: %s\n", m_crossSection ? "ON" : "OFF");
 }
 
 void App::toggle3D() {
-    // 3D volume rendering not yet available in Metal port
-    printf("3D mode not yet available in Metal port\n");
+    m_mode3D = !m_mode3D;
+    m_showAll = false;
+    invalidateFrameCache(true);
+    if (m_mode3D && m_activeStationIdx >= 0) {
+        rebuildVolumeForCurrentSelection();
+    }
+    m_needsRerender = true;
+    printf("3D mode: %s\n", m_mode3D ? "ON" : "OFF");
 }
 
 void App::toggleSRV() {
