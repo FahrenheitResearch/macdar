@@ -270,6 +270,7 @@ private:
     // Re-render flag
     bool m_needsRerender = true;
     bool m_needsComposite = true;
+    bool m_singleStationMode = false;  // iOS: only poll active station
 
     // Auto-refresh timer
     std::chrono::steady_clock::time_point m_lastRefresh;

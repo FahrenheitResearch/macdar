@@ -465,6 +465,7 @@ bool App::init(int windowWidth, int windowHeight, id<MTLDevice> device) {
         if (dist < bestDist) { bestDist = dist; bestIdx = i; }
     }
     m_activeStationIdx = bestIdx;
+    m_singleStationMode = true;  // iOS: only poll active station
     m_viewport.center_lat = m_stations[bestIdx].lat;
     m_viewport.center_lon = m_stations[bestIdx].lon;
     m_viewport.zoom = 180.0;
@@ -1460,7 +1461,13 @@ void App::update(float dt) {
     const float schedulerElapsed =
         std::chrono::duration<float>(now - m_lastLivePollSweep).count();
     if (!m_snapshotMode && schedulerElapsed >= m_livePollSweepIntervalSec) {
-        updateLivePolling(now);
+        if (m_singleStationMode) {
+            // iOS: only refresh the active station
+            if (m_activeStationIdx >= 0)
+                queueLiveStationRefresh(m_activeStationIdx, false);
+        } else {
+            updateLivePolling(now);
+        }
         m_lastLivePollSweep = now;
     }
 }
