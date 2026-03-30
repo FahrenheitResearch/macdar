@@ -17,18 +17,15 @@ struct RadarMapView: UIViewRepresentable {
         mtkView.isPaused = false
         mtkView.enableSetNeedsDisplay = false
 
-        // Initialize engine with view size
-        let size = mtkView.drawableSize
-        appState.initialize(width: Int(size.width), height: Int(size.height))
-
-        // Create render coordinator
+        // Create render coordinator (engine init deferred until we get real size)
         let coordinator = context.coordinator
         coordinator.renderCoordinator = MetalRenderCoordinator(
             engine: appState.engine,
-            device: appState.device)
+            device: appState.device,
+            appState: appState)
         mtkView.delegate = coordinator.renderCoordinator
 
-        // Add gesture recognizers
+        // Gesture recognizers
         let pinch = UIPinchGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePinch(_:)))
         mtkView.addGestureRecognizer(pinch)
 
@@ -50,8 +47,6 @@ struct RadarMapView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         context.coordinator.renderCoordinator?.isRendering = appState.isRendering
-        // Sync state periodically
-        appState.syncFromEngine()
     }
 
     class Coordinator: NSObject {
@@ -93,7 +88,6 @@ struct RadarMapView: UIViewRepresentable {
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
             let location = gesture.location(in: gesture.view)
-            // Scale for retina
             let scale = gesture.view?.contentScaleFactor ?? 2.0
             appState.engine.tap(atScreenX: Double(location.x * scale),
                                y: Double(location.y * scale))
@@ -101,12 +95,11 @@ struct RadarMapView: UIViewRepresentable {
         }
 
         @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            // Double-tap: toggle zoom level
             let zoom = appState.engine.zoom
             if zoom > 80 {
-                appState.engine.zoom(byMagnification: -0.7)  // zoom out
+                appState.engine.zoom(byMagnification: -0.7)
             } else {
-                appState.engine.zoom(byMagnification: 2.0)  // zoom in
+                appState.engine.zoom(byMagnification: 2.0)
             }
             appState.syncFromEngine()
         }

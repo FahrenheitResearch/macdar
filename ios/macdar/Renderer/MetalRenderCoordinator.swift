@@ -6,27 +6,26 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
     let engine: RadarEngine
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
+    weak var appState: AppState?
 
     // For blitting compute output to screen
     private var pipelineState: MTLRenderPipelineState?
-    private var vertexBuffer: MTLBuffer?
     private var outputTexture: MTLTexture?
     private var outputTextureSize: (Int, Int) = (0, 0)
+    private var engineInitialized = false
 
     var isRendering = true
 
-    init(engine: RadarEngine, device: MTLDevice) {
+    init(engine: RadarEngine, device: MTLDevice, appState: AppState) {
         self.engine = engine
         self.device = device
+        self.appState = appState
         self.commandQueue = device.makeCommandQueue()!
         super.init()
         buildPipeline()
     }
 
-    // Build a simple fullscreen textured quad pipeline for displaying the compute output
     private func buildPipeline() {
-        // We'll use a simple vertex/fragment shader to blit a texture to screen
-        // Embedded as a string to avoid needing a separate .metal file
         let shaderSrc = """
         #include <metal_stdlib>
         using namespace metal;
@@ -37,7 +36,6 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         };
 
         vertex VertexOut blit_vertex(uint vid [[vertex_id]]) {
-            // Fullscreen triangle (3 vertices, no vertex buffer needed)
             float2 positions[3] = {float2(-1, -1), float2(3, -1), float2(-1, 3)};
             float2 texCoords[3] = {float2(0, 1), float2(2, 1), float2(0, -1)};
             VertexOut out;
@@ -53,12 +51,16 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         }
         """
 
-        let library = try! device.makeLibrary(source: shaderSrc, options: nil)
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name: "blit_vertex")
-        descriptor.fragmentFunction = library.makeFunction(name: "blit_fragment")
-        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-        pipelineState = try! device.makeRenderPipelineState(descriptor: descriptor)
+        do {
+            let library = try device.makeLibrary(source: shaderSrc, options: nil)
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = library.makeFunction(name: "blit_vertex")
+            descriptor.fragmentFunction = library.makeFunction(name: "blit_fragment")
+            descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            pipelineState = try device.makeRenderPipelineState(descriptor: descriptor)
+        } catch {
+            print("MetalRenderCoordinator: Failed to build blit pipeline: \(error)")
+        }
     }
 
     private func ensureOutputTexture(width: Int, height: Int) {
@@ -73,16 +75,37 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         outputTextureSize = (width, height)
     }
 
+    private func initEngineIfNeeded(width: Int, height: Int) {
+        guard !engineInitialized && width > 0 && height > 0 else { return }
+        print("MetalRenderCoordinator: Initializing engine \(width)x\(height)")
+        appState?.initialize(width: width, height: height)
+        engineInitialized = true
+    }
+
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         let w = Int(size.width)
         let h = Int(size.height)
         if w > 0 && h > 0 {
-            engine.resizeWidth(Int32(w), height: Int32(h))
+            if !engineInitialized {
+                initEngineIfNeeded(width: w, height: h)
+            } else {
+                engine.resizeWidth(Int32(w), height: Int32(h))
+            }
         }
     }
 
     func draw(in view: MTKView) {
         guard isRendering else { return }
+
+        // Try to init if we haven't yet
+        if !engineInitialized {
+            let size = view.drawableSize
+            if size.width > 0 && size.height > 0 {
+                initEngineIfNeeded(width: Int(size.width), height: Int(size.height))
+            }
+            return
+        }
+
         guard let drawable = view.currentDrawable,
               let renderPassDesc = view.currentRenderPassDescriptor else { return }
 
@@ -90,13 +113,11 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         let h = engine.viewportHeight()
         if w <= 0 || h <= 0 { return }
 
-        // Update app state
-        engine.update(withDeltaTime: Float(1.0 / Double(view.preferredFramesPerSecond)))
-
-        // Run Metal compute to render radar
+        // Update and render
+        engine.update(withDeltaTime: Float(1.0 / Double(max(view.preferredFramesPerSecond, 1))))
         engine.render()
 
-        // Get the output buffer
+        // Get output buffer
         guard let outputBuf = engine.outputBuffer() else { return }
 
         // Copy buffer to texture
@@ -108,7 +129,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
                     withBytes: outputBuf.contents(),
                     bytesPerRow: Int(w) * 4)
 
-        // Blit texture to drawable
+        // Blit to drawable
         guard let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDesc),
               let pipeline = pipelineState else { return }
@@ -120,5 +141,8 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
+
+        // Sync UI state periodically
+        appState?.syncFromEngine()
     }
 }
