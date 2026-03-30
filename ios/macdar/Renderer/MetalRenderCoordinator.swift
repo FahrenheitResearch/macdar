@@ -77,7 +77,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
 
     private func initEngineIfNeeded(width: Int, height: Int) {
         guard !engineInitialized && width > 0 && height > 0 else { return }
-        print("MetalRenderCoordinator: Initializing engine \(width)x\(height)")
+        print("MetalRenderCoordinator: Initializing engine \(width)x\(height) on thread \(Thread.isMainThread ? "MAIN" : "BG")")
         appState?.initialize(width: width, height: height)
         engineInitialized = true
     }

@@ -989,9 +989,10 @@ void MetalRenderer::buildSpatialGridGpu(const GpuStationInfo* h_stations, int nu
     for (int i = 0; i < num_stations; i++)
         active_ptr[i] = (h_stations[i].num_radials > 0) ? 1 : 0;
 
-    // Initialize grid on CPU, upload
-    SpatialGrid init_grid;
-    initializeSpatialGrid(&init_grid);
+    // Initialize grid on CPU, upload (heap-allocated — SpatialGrid is ~1MB)
+    auto init_grid_ptr = std::make_unique<SpatialGrid>();
+    initializeSpatialGrid(init_grid_ptr.get());
+    SpatialGrid& init_grid = *init_grid_ptr;
 
     id<MTLBuffer> gridBuf = [_device newBufferWithLength:sizeof(SpatialGrid)
                                                 options:MTLResourceStorageModeShared];

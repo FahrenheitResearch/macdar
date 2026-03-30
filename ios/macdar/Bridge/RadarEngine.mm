@@ -39,7 +39,9 @@
             [self shutdown];
         }
 
+        NSLog(@"RadarEngine: creating App %dx%d", w, h);
         _app = std::make_unique<App>();
+        NSLog(@"RadarEngine: calling init...");
         if (!_app->init(w, h, device)) {
             NSLog(@"RadarEngine: App::init failed");
             _app.reset();
