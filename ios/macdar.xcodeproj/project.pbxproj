@@ -24,24 +24,24 @@
 		8B9C5CD8D687256752571A51 /* app.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A509CA7D957DD10C8BC2BB60 /* app.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++ -fobjc-arc"; }; };
 		8CA371C6CD3DDC511374B614 /* RadarEngine.mm in Sources */ = {isa = PBXBuildFile; fileRef = 439A452E888E6A427096B803 /* RadarEngine.mm */; };
 		9F147EC209689EFD9EC009E4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6134FF89D8B27EBCEE8E9FA2 /* Assets.xcassets */; };
-		A2091DFF59FD76718055DD12 /* downloader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 301DDC18BC34D866AFABE892 /* downloader.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++"; }; };
 		A6FE7B106231089666B0ECB5 /* ProductPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA223A05F093FC7DAAC940E7 /* ProductPickerView.swift */; };
 		B0D233B8CF3CFAEDF19CBE45 /* MetalRenderCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF94D31942E62FBF5897764 /* MetalRenderCoordinator.swift */; };
 		D7019E87AC4ED79187A4F1CC /* RadarMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F387AAFD237E6E9ED2F83DD0 /* RadarMapView.swift */; };
 		F36403B7F386AAE4023492F9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD9431781C33A62EA2A936E /* ContentView.swift */; };
 		F920B71F9AC21A37C3C5F198 /* color_table.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0D05A24099BA8753B1265F60 /* color_table.cpp */; settings = {COMPILER_FLAGS = "-x objective-c++ -fobjc-arc"; }; };
+		FA5A02E1C5A2BB031E199D07 /* IOSDownloader.mm in Sources */ = {isa = PBXBuildFile; fileRef = 502DE49F8A750EB4BC2E6306 /* IOSDownloader.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0C4E90065D5334FFE3CB7959 /* gpu_pipeline.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = gpu_pipeline.metal; sourceTree = "<group>"; };
 		0D05A24099BA8753B1265F60 /* color_table.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = color_table.cpp; sourceTree = "<group>"; };
 		12EA69028CFF51E1DA93AADB /* warnings.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = warnings.cpp; sourceTree = "<group>"; };
-		197A675C6C6234CAFD90664D /* macdar.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = macdar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		197A675C6C6234CAFD90664D /* macdar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = macdar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		19BE94434DFF415B3E77E064 /* macdar-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "macdar-Bridging-Header.h"; sourceTree = "<group>"; };
 		2AD9431781C33A62EA2A936E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		301DDC18BC34D866AFABE892 /* downloader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = downloader.cpp; sourceTree = "<group>"; };
 		439A452E888E6A427096B803 /* RadarEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RadarEngine.mm; sourceTree = "<group>"; };
 		4517924F4DED9BBC4DF2EF28 /* StationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationPickerSheet.swift; sourceTree = "<group>"; };
+		502DE49F8A750EB4BC2E6306 /* IOSDownloader.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = IOSDownloader.mm; sourceTree = "<group>"; };
 		56392CF250C39188154F4E75 /* historic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = historic.cpp; sourceTree = "<group>"; };
 		60925731FC982F8C14CFF10B /* renderer.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = renderer.metal; sourceTree = "<group>"; };
 		6134FF89D8B27EBCEE8E9FA2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -93,7 +93,6 @@
 		63C5EADEBA6C0803511AF029 /* net */ = {
 			isa = PBXGroup;
 			children = (
-				301DDC18BC34D866AFABE892 /* downloader.cpp */,
 				B32589671727C06E1791D748 /* polling_links.cpp */,
 				12EA69028CFF51E1DA93AADB /* warnings.cpp */,
 			);
@@ -141,6 +140,7 @@
 		92BE2DF4487E81D8E61CFDD0 /* Bridge */ = {
 			isa = PBXGroup;
 			children = (
+				502DE49F8A750EB4BC2E6306 /* IOSDownloader.mm */,
 				19BE94434DFF415B3E77E064 /* macdar-Bridging-Header.h */,
 				74721D9BD77809E0DBC4FBAE /* RadarEngine.h */,
 				439A452E888E6A427096B803 /* RadarEngine.mm */,
@@ -223,7 +223,6 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					B3D1E637D076F9AF5887F8D7 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -265,6 +264,7 @@
 			files = (
 				805E1B9C2D3571B8BBC71F6D /* AppState.swift in Sources */,
 				F36403B7F386AAE4023492F9 /* ContentView.swift in Sources */,
+				FA5A02E1C5A2BB031E199D07 /* IOSDownloader.mm in Sources */,
 				B0D233B8CF3CFAEDF19CBE45 /* MetalRenderCoordinator.swift in Sources */,
 				1941FC1609FF7687BC5F528E /* MetalRenderer.mm in Sources */,
 				A6FE7B106231089666B0ECB5 /* ProductPickerView.swift in Sources */,
@@ -275,7 +275,6 @@
 				3426E29FD0E8879429794DC9 /* TiltControlView.swift in Sources */,
 				8B9C5CD8D687256752571A51 /* app.cpp in Sources */,
 				F920B71F9AC21A37C3C5F198 /* color_table.cpp in Sources */,
-				A2091DFF59FD76718055DD12 /* downloader.cpp in Sources */,
 				70F075560E798A7F975968BC /* gpu_pipeline.metal in Sources */,
 				197AD763AFEA436C8B476AB2 /* historic.cpp in Sources */,
 				23EC23724FE30521011C5655 /* level2_parser.cpp in Sources */,
@@ -353,7 +352,6 @@
 				OTHER_LDFLAGS = (
 					"-lz",
 					"-lbz2",
-					"-lcurl",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahrenheitresearch.macdar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -371,6 +369,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = X65S282G57;
 				INFOPLIST_FILE = macdar/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -386,6 +385,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = X65S282G57;
 				INFOPLIST_FILE = macdar/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -465,7 +465,6 @@
 				OTHER_LDFLAGS = (
 					"-lz",
 					"-lbz2",
-					"-lcurl",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahrenheitresearch.macdar;
 				PRODUCT_NAME = "$(TARGET_NAME)";

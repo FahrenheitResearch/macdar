@@ -77,7 +77,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         let w = Int(size.width)
         let h = Int(size.height)
         if w > 0 && h > 0 {
-            engine.resize(width: Int32(w), height: Int32(h))
+            engine.resizeWidth(Int32(w), height: Int32(h))
         }
     }
 

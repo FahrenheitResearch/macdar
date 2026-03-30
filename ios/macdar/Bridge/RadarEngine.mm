@@ -6,9 +6,9 @@
 
 #include <memory>
 
-// ── StationInfo (ObjC wrapper) ────────────────────────────────
+// ── RadarStationInfo (ObjC wrapper) ────────────────────────────────
 
-@implementation StationInfo
+@implementation RadarStationInfo
 @end
 
 // ── RadarEngine ───────────────────────────────────────────────
@@ -276,15 +276,15 @@
     }
 }
 
-- (NSArray<StationInfo *> *)stationList {
+- (NSArray<RadarStationInfo *> *)stationList {
     @synchronized (self) {
         if (!_initialized) return @[];
 
         std::vector<StationUiState> stations = _app->stations();
-        NSMutableArray<StationInfo *> *result = [NSMutableArray arrayWithCapacity:stations.size()];
+        NSMutableArray<RadarStationInfo *> *result = [NSMutableArray arrayWithCapacity:stations.size()];
 
         for (const auto& st : stations) {
-            StationInfo *info = [[StationInfo alloc] init];
+            RadarStationInfo *info = [[RadarStationInfo alloc] init];
             info.icao = [NSString stringWithUTF8String:st.icao.c_str()];
             info.lat = st.lat;
             info.lon = st.lon;

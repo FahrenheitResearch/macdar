@@ -24,7 +24,7 @@ class AppState: ObservableObject {
     }
 
     func initialize(width: Int, height: Int) {
-        engine.initialize(withDevice: device, width: Int32(width), height: Int32(height))
+        engine.initialize(with: device, width: Int32(width), height: Int32(height))
     }
 
     func syncFromEngine() {

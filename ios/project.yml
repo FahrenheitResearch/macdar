@@ -21,7 +21,6 @@ settings:
     OTHER_LDFLAGS:
       - "-lz"
       - "-lbz2"
-      - "-lcurl"
     HEADER_SEARCH_PATHS:
       - "$(PROJECT_DIR)/shared_src"
       - "$(PROJECT_DIR)/shared_src/metal"
@@ -37,19 +36,18 @@ targets:
       - path: macdar/App
       - path: macdar/Views
       - path: macdar/Renderer
-      # ── ObjC++ Bridge ──
+      # ── ObjC++ Bridge (includes IOSDownloader.mm) ──
       - path: macdar/Bridge
       # ── Resources ──
       - path: macdar/Resources
-      # ── Shared C++ (all compiled as ObjC++ for Metal header compat) ──
+      # ── Shared C++ (compiled as ObjC++ for Metal header compat) ──
       - path: shared_src/app.cpp
         compilerFlags: "-x objective-c++ -fobjc-arc"
       - path: shared_src/historic.cpp
         compilerFlags: "-x objective-c++ -fobjc-arc"
       - path: shared_src/nexrad/level2_parser.cpp
         compilerFlags: "-x objective-c++"
-      - path: shared_src/net/downloader.cpp
-        compilerFlags: "-x objective-c++"
+      # NOTE: downloader.cpp replaced by macdar/Bridge/IOSDownloader.mm for iOS
       - path: shared_src/net/polling_links.cpp
         compilerFlags: "-x objective-c++"
       - path: shared_src/net/warnings.cpp

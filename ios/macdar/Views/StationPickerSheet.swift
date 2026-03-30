@@ -5,8 +5,8 @@ struct StationPickerSheet: View {
     @Environment(\.dismiss) var dismiss
     @State private var searchText = ""
 
-    var stations: [StationInfo] {
-        let all = appState.engine.stationList() as? [StationInfo] ?? []
+    var stations: [RadarStationInfo] {
+        let all = appState.engine.stationList() as? [RadarStationInfo] ?? []
         if searchText.isEmpty { return all }
         return all.filter {
             $0.icao.localizedCaseInsensitiveContains(searchText)

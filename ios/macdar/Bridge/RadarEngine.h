@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface StationInfo : NSObject
+@interface RadarStationInfo : NSObject
 @property (nonatomic, copy) NSString *icao;
 @property (nonatomic) float lat, lon;
 @property (nonatomic) BOOL loaded;
@@ -55,7 +55,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) int stationsLoaded;
 @property (nonatomic, readonly) int stationsTotal;
 - (void)selectStation:(int)idx centerView:(BOOL)center;
-- (NSArray<StationInfo *> *)stationList;
+- (NSArray<RadarStationInfo *> *)stationList;
 
 // Multi-radar mode
 @property (nonatomic) BOOL mosaicMode;
