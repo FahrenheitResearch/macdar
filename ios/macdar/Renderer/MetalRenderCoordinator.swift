@@ -114,34 +114,33 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         let h = engine.viewportHeight()
         if w <= 0 || h <= 0 { return }
 
-        // Update and render
+        // 1. Copy PREVIOUS frame's output to texture (already complete from last frame's GPU work)
+        if let outputBuf = engine.outputBuffer() {
+            ensureOutputTexture(width: Int(w), height: Int(h))
+            if let tex = outputTexture {
+                let region = MTLRegionMake2D(0, 0, Int(w), Int(h))
+                tex.replace(region: region, mipmapLevel: 0,
+                            withBytes: outputBuf.contents(),
+                            bytesPerRow: Int(w) * 4)
+            }
+        }
+
+        // 2. Blit texture to drawable (uses previous frame's data — 1 frame latency, invisible)
+        if let tex = outputTexture,
+           let commandBuffer = commandQueue.makeCommandBuffer(),
+           let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDesc),
+           let pipeline = pipelineState {
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setFragmentTexture(tex, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+        }
+
+        // 3. Kick off THIS frame's compute (async, no wait — GPU works while we return)
         engine.update(withDeltaTime: Float(1.0 / Double(max(view.preferredFramesPerSecond, 1))))
         engine.render()
-
-        // Get output buffer
-        guard let outputBuf = engine.outputBuffer() else { return }
-
-        // Copy buffer to texture
-        ensureOutputTexture(width: Int(w), height: Int(h))
-        guard let tex = outputTexture else { return }
-
-        let region = MTLRegionMake2D(0, 0, Int(w), Int(h))
-        tex.replace(region: region, mipmapLevel: 0,
-                    withBytes: outputBuf.contents(),
-                    bytesPerRow: Int(w) * 4)
-
-        // Blit to drawable
-        guard let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDesc),
-              let pipeline = pipelineState else { return }
-
-        encoder.setRenderPipelineState(pipeline)
-        encoder.setFragmentTexture(tex, index: 0)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
 
         // Sync UI state periodically (throttled, on main thread)
         let now = CACurrentMediaTime()

@@ -136,6 +136,30 @@
     @synchronized (self) {
         if (!_initialized) return;
         _app->onMouseMove(x, y);
+
+        // Convert screen coords to lat/lon using viewport math
+        Viewport& vp = _app->viewport();
+        double lon = vp.center_lon + (x - vp.width * 0.5) / vp.zoom;
+        double lat = vp.center_lat - (y - vp.height * 0.5) / vp.zoom;
+
+        // Find nearest NEXRAD station from the full station list
+        int bestIdx = -1;
+        float bestDist = 1e9f;
+        std::vector<StationUiState> stationList = _app->stations();
+        for (const auto& st : stationList) {
+            float dlat = st.lat - (float)lat;
+            float dlon = st.lon - (float)lon;
+            float dist = dlat * dlat + dlon * dlon;
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = st.index;
+            }
+        }
+
+        // If a different station is closer, select it (downloads if needed)
+        if (bestIdx >= 0 && bestIdx != _app->activeStation()) {
+            _app->selectStation(bestIdx, true);
+        }
     }
 }
 

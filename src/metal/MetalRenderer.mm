@@ -611,7 +611,8 @@ void MetalRenderer::clearOutputBuffer(const GpuViewport& vp, id<MTLBuffer> outpu
     [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
     [enc endEncoding];
     [cmdBuf commit];
-    [cmdBuf waitUntilCompleted];
+    // Note: GPU clear path disabled — CPU clear above returns before reaching here
+    // If re-enabled, no waitUntilCompleted needed (async is fine for clear)
 }
 
 // ── Helper: shouldUseInverseFallback ───────────────────────────
@@ -704,6 +705,9 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
     memset(_forwardAccumBuffer.contents, 0xFF, pixel_count * sizeof(uint32_t));
     memset(_forwardColorBuffer.contents, 0, pixel_count * sizeof(uint32_t));
 
+    // Single command buffer for ALL station forward renders + resolve
+    id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
+
     // Forward-render each visible station into the shared accum buffers
     for (int i = 0; i < num_stations && i < MAX_STATIONS; i++) {
         auto& st = _stations[i];
@@ -727,7 +731,6 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
         fwdParams.srv_speed = 0.0f;
         fwdParams.srv_dir_rad = 0.0f;
 
-        id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
         [enc setComputePipelineState:_forwardRenderPSO];
         [enc setBuffer:st.azimuths offset:0 atIndex:0];
@@ -747,13 +750,10 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
 
         [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
         [enc endEncoding];
-        [cmdBuf commit];
-        [cmdBuf waitUntilCompleted];
     }
 
-    // Resolve: depth+color → final RGBA output
+    // Resolve: depth+color -> final RGBA output (same command buffer, no wait between)
     {
-        id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
         [enc setComputePipelineState:_forwardResolvePSO];
         [enc setBuffer:_forwardAccumBuffer offset:0 atIndex:0];
@@ -772,9 +772,11 @@ void MetalRenderer::renderNative(const GpuViewport& vp,
 
         [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
         [enc endEncoding];
-        [cmdBuf commit];
-        [cmdBuf waitUntilCompleted];
     }
+
+    [cmdBuf commit];
+    // NO waitUntilCompleted — all station renders + resolve are batched in one command buffer.
+    // GPU executes them in order. Coordinator reads the output buffer next frame.
 }
 
 // ── renderSingleStation ────────────────────────────────────────
@@ -830,7 +832,8 @@ void MetalRenderer::renderSingleStation(const GpuViewport& vp, int station_idx,
     [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
     [enc endEncoding];
     [cmdBuf commit];
-    [cmdBuf waitUntilCompleted];
+    // NO waitUntilCompleted — let GPU work complete asynchronously.
+    // The coordinator reads the output buffer next frame (1-frame latency, invisible to user).
 }
 
 // ── forwardRenderStation ───────────────────────────────────────
@@ -924,7 +927,9 @@ void MetalRenderer::forwardRenderStation(const GpuViewport& vp, int station_idx,
     }
 
     [cmdBuf commit];
-    [cmdBuf waitUntilCompleted];
+    // NO waitUntilCompleted — let GPU work complete asynchronously.
+    // Both forward render + resolve are in the same command buffer for correct ordering.
+    // The coordinator reads the output buffer next frame (1-frame latency, invisible to user).
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1278,7 +1283,7 @@ void MetalRenderer::renderVolume(const Camera3D& cam, int width, int height,
     [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
     [enc endEncoding];
     [cmdBuf commit];
-    [cmdBuf waitUntilCompleted];
+    // NO waitUntilCompleted — let GPU ray march complete asynchronously.
 }
 
 // ── renderCrossSection ─────────────────────────────────────────
@@ -1336,5 +1341,5 @@ void MetalRenderer::renderCrossSection(int station_idx, int product, float dbz_m
     [enc dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadsPerGroup];
     [enc endEncoding];
     [cmdBuf commit];
-    [cmdBuf waitUntilCompleted];
+    // NO waitUntilCompleted — let GPU cross-section render complete asynchronously.
 }
