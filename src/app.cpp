@@ -451,20 +451,35 @@ bool App::init(int windowWidth, int windowHeight, id<MTLDevice> device) {
         s.lon = NEXRAD_STATIONS[i].lon;
     }
 
-    // Create downloader with 12 concurrent threads (reduced for iOS)
-    m_downloader = std::make_unique<Downloader>(12);
+    // iOS: reduced resources
+    m_downloader = std::make_unique<Downloader>(6);
 
-    // Start downloading all stations
-    startDownloads();
+    // iOS: only download nearest station to viewport center, not all 162
+    // Find nearest station
+    float bestDist = 1e9f;
+    int bestIdx = 0;
+    for (int i = 0; i < m_stationsTotal; i++) {
+        float dlat = m_stations[i].lat - (float)m_viewport.center_lat;
+        float dlon = m_stations[i].lon - (float)m_viewport.center_lon;
+        float dist = dlat * dlat + dlon * dlon;
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    m_activeStationIdx = bestIdx;
+    m_viewport.center_lat = m_stations[bestIdx].lat;
+    m_viewport.center_lon = m_stations[bestIdx].lon;
+    m_viewport.zoom = 180.0;
 
-    m_renderer->initVolume();
-    m_warnings.startPolling();
+    // Download just this one station
+    queueLiveStationRefresh(bestIdx, true);
+    printf("iOS: downloading nearest station %s\n", m_stations[bestIdx].icao.c_str());
+
+    // Skip volume init on iOS (saves 48MB)
+    // m_renderer->initVolume();
     m_lastRefresh = std::chrono::steady_clock::now();
     m_lastLivePollSweep = m_lastRefresh;
 
-    printf("App initialized (external device): %d stations, viewport %dx%d\n",
-           m_stationsTotal, windowWidth, windowHeight);
-    fflush(stderr);
+    printf("App initialized (iOS): station %s, viewport %dx%d\n",
+           m_stations[bestIdx].icao.c_str(), windowWidth, windowHeight);
     return true;
 }
 
