@@ -1588,10 +1588,14 @@ void App::render() {
                                      m_renderer->getQueue());
         }
 
+        // Wait for GPU to finish radar render before touching the output buffer
+        m_renderer->waitForGpu();
+
         // Boundary overlay: rasterize only when viewport changes, then composite
         rasterizeBoundaries();
+        compositeBoundaries();
 
-        // Metal command buffer synchronization is handled internally by the renderer
+        // Copy to display texture (macOS only — iOS reads the buffer directly)
         if (!m_singleStationMode) {
             m_outputTex.updateFromBuffer(m_d_compositeOutput,
                                           m_viewport.width, m_viewport.height,

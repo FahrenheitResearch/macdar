@@ -215,7 +215,7 @@ private:
     int              m_maxTilts = 1;
     float            m_activeTiltAngle = 0.5f;
     float            m_dbzMinThreshold = 5.0f;
-    float            m_velocityMinThreshold = 12.0f;
+    float            m_velocityMinThreshold = 0.0f;
     bool             m_snapshotMode = false;
     bool             m_snapshotLowestSweepOnly = false;
     std::string      m_snapshotLabel;
