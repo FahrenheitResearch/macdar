@@ -1,11 +1,18 @@
 #pragma once
+
+#ifdef __OBJC__
+#import <Metal/Metal.h>
+#else
+// Forward declarations for non-ObjC compilation units
+typedef void* id;
+#endif
+
 #include "nexrad/level2.h"
 #include "nexrad/products.h"
-#include "cuda/renderer.cuh"
-#include "render/gl_interop.h"
+#include "metal/MetalRenderer.h"
+#include "render/metal_interop.h"
 #include "render/color_table.h"
 #include "render/projection.h"
-#include "cuda/volume3d.cuh"
 #include "net/downloader.h"
 #include "net/polling_links.h"
 #include "net/warnings.h"
@@ -87,6 +94,7 @@ public:
 
     // Handle input
     void onScroll(double xoff, double yoff);
+    void onMagnify(double magnification);  // pinch-to-zoom
     void onMouseDrag(double dx, double dy);
     void onMouseMove(double mx, double my);
     void onResize(int w, int h);
@@ -109,7 +117,7 @@ public:
     float xsStartLon() const { return m_xsStartLon; }
     float xsEndLat() const { return m_xsEndLat; }
     float xsEndLon() const { return m_xsEndLon; }
-    GlCudaTexture& xsTexture() { return m_xsTex; }
+    MetalTexture& xsTexture() { return m_xsTex; }
     int xsWidth() const { return m_xsWidth; }
     int xsHeight() const { return m_xsHeight; }
 
@@ -128,7 +136,7 @@ public:
     int             stationsLoaded() const { return m_stationsLoaded.load(); }
     int             stationsTotal() const { return m_stationsTotal; }
     int             stationsDownloading() const { return m_stationsDownloading.load(); }
-    GlCudaTexture&  outputTexture() { return m_outputTex; }
+    MetalTexture&  outputTexture() { return m_outputTex; }
     bool            autoTrackStation() const { return m_autoTrackStation; }
     void            setAutoTrackStation(bool enabled) { m_autoTrackStation = enabled; }
     float           cursorLat() const { return m_mouseLat; }
@@ -216,11 +224,12 @@ private:
     std::atomic<int> m_stationsDownloading{0};
 
     // GPU compositor output
-    uint32_t*       m_d_compositeOutput = nullptr;
-    GlCudaTexture   m_outputTex;
+    id<MTLBuffer>   m_d_compositeOutput = nil;
+    MetalTexture   m_outputTex;
 
     // Spatial grid for fast station lookup in compositor
     std::unique_ptr<SpatialGrid> m_spatialGrid;
+    std::unique_ptr<MetalRenderer> m_renderer;
     bool            m_gridDirty = true;
 
     // Download manager
@@ -249,8 +258,8 @@ private:
     float m_xsStartLat = 0, m_xsStartLon = 0;
     float m_xsEndLat = 0, m_xsEndLon = 0;
     bool  m_xsDragging = false;
-    uint32_t* m_d_xsOutput = nullptr;
-    GlCudaTexture m_xsTex;          // separate GL texture for cross-section panel
+    id<MTLBuffer> m_d_xsOutput = nil;
+    MetalTexture m_xsTex;          // separate GL texture for cross-section panel
     int m_xsWidth = 0, m_xsHeight = 0;
     int m_xsAllocWidth = 0, m_xsAllocHeight = 0;
 
@@ -318,11 +327,11 @@ public:
 
     // Pre-baked animation frame cache
     static constexpr int MAX_CACHED_FRAMES = 60;
-    uint32_t* m_cachedFrames[MAX_CACHED_FRAMES] = {};
+    id<MTLBuffer> m_cachedFrames[MAX_CACHED_FRAMES] = {};
     int m_cachedFrameCount = 0;
     int m_cachedFrameWidth = 0;
     int m_cachedFrameHeight = 0;
-    void cacheAnimFrame(int frameIdx, const uint32_t* d_src, int w, int h);
+    void cacheAnimFrame(int frameIdx, id<MTLBuffer> d_src, int w, int h);
     bool hasCachedFrame(int frameIdx, int w, int h) const {
         return frameIdx >= 0 &&
                frameIdx < m_cachedFrameCount &&

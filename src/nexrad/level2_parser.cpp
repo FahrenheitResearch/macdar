@@ -237,7 +237,7 @@ static std::vector<uint8_t> decompressGzip(const std::vector<uint8_t>& data) {
     int ret = Z_OK;
     while (ret == Z_OK) {
         if (strm.total_out >= output.size()) {
-            const size_t newSize = std::min(output.size() * 2, 200u * 1024u * 1024u);
+            const size_t newSize = std::min(output.size() * 2, size_t(200u * 1024u * 1024u));
             if (newSize <= output.size()) {
                 inflateEnd(&strm);
                 return {};

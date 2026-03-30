@@ -1,5 +1,5 @@
 #include "color_table.h"
-#include "cuda/cuda_common.cuh"
+#include "metal/metal_common.h"
 #include "nexrad/products.h"
 #include <algorithm>
 #include <cctype>

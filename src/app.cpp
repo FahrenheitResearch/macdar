@@ -1,8 +1,6 @@
 #include "app.h"
 #include "nexrad/stations.h"
 #include "nexrad/level2_parser.h"
-#include "cuda/gpu_pipeline.cuh"
-#include "cuda/volume3d.cuh"
 #include "net/aws_nexrad.h"
 #include <cstdio>
 #include <cstring>
@@ -346,28 +344,34 @@ App::~App() {
     m_historic.cancel();
     m_warnings.stop();
     invalidateFrameCache(true);
-    if (m_d_xsOutput) cudaFree(m_d_xsOutput);
-    if (m_d_compositeOutput) cudaFree(m_d_compositeOutput);
-    gpu::freeVolume();
+    m_d_xsOutput = nil;
+    m_d_compositeOutput = nil;
+    if (m_renderer) {
+        m_renderer->freeVolume();
+        m_renderer->shutdown();
+    }
     m_xsTex.destroy();
     m_outputTex.destroy();
-    gpu::shutdown();
 }
 
 bool App::init(int windowWidth, int windowHeight) {
     m_windowWidth = windowWidth;
     m_windowHeight = windowHeight;
 
-    // Initialize CUDA renderer
-    gpu::init();
+    // Initialize Metal renderer
+    m_renderer = std::make_unique<MetalRenderer>();
+    if (!m_renderer->init()) {
+        fprintf(stderr, "Failed to initialize Metal renderer\n");
+        return false;
+    }
 
     // Allocate compositor output buffer
     size_t outSize = (size_t)windowWidth * windowHeight * sizeof(uint32_t);
-    CUDA_CHECK(cudaMalloc(&m_d_compositeOutput, outSize));
-    CUDA_CHECK(cudaMemset(m_d_compositeOutput, 0, outSize));
+    m_d_compositeOutput = [m_renderer->getDevice() newBufferWithLength:outSize options:MTLResourceStorageModeShared];
+    memset(m_d_compositeOutput.contents, 0, outSize);
 
-    // Create GL texture for display
-    if (!m_outputTex.init(windowWidth, windowHeight)) {
+    // Create Metal texture for display
+    if (!m_outputTex.init(windowWidth, windowHeight, m_renderer->getDevice())) {
         fprintf(stderr, "Failed to create output texture\n");
         return false;
     }
@@ -396,13 +400,14 @@ bool App::init(int windowWidth, int windowHeight) {
     // Start downloading all stations
     startDownloads();
 
-    gpu::initVolume();
+    m_renderer->initVolume();
     m_warnings.startPolling();
     m_lastRefresh = std::chrono::steady_clock::now();
     m_lastLivePollSweep = m_lastRefresh;
 
     printf("App initialized: %d stations, viewport %dx%d\n",
            m_stationsTotal, windowWidth, windowHeight);
+    fflush(stderr);
     return true;
 }
 
@@ -612,7 +617,7 @@ void App::resetStationsForReload() {
     }
 
     for (int i = 0; i < (int)m_stations.size(); i++) {
-        gpu::freeStation(i);
+        m_renderer->freeStation(i);
         auto& st = m_stations[i];
         st.downloading = false;
         st.parsed = false;
@@ -747,7 +752,7 @@ bool App::tryProcessDownload(int stationIdx, std::vector<uint8_t> data, uint64_t
     // But the heavy transposition work moves to GPU via uploadStation.
     //
     // Build precomputed data using CPU parse results but defer transposition
-    // to GPU in uploadStation via the gpu_pipeline kernels.
+    // to GPU in uploadStation via the Metal compute kernels.
     std::vector<PrecomputedSweep> precomp;
     precomp.resize(parsed.sweeps.size());
 
@@ -872,7 +877,7 @@ static std::vector<int> getBestSweeps(const std::vector<PrecomputedSweep>& sweep
         }
     }
 
-    // For each unique elevation (within 0.3°), keep the one with most gates
+    // For each unique elevation (within 0.3 deg), keep the one with most gates
     std::vector<int> best;
     for (auto& c : candidates) {
         bool dominated = false;
@@ -991,7 +996,7 @@ bool App::loadColorTableFromFile(const std::string& path) {
         return false;
     }
 
-    gpu::setColorTable(table.product, table.colors.data());
+    m_renderer->setColorTable(table.product, table.colors.data());
     m_colorTableLabels[table.product] = table.label;
     m_colorTableStatus = table.format + " loaded for " + PRODUCT_INFO[table.product].name +
         " from " + table.label;
@@ -1003,7 +1008,7 @@ bool App::loadColorTableFromFile(const std::string& path) {
 void App::resetColorTable(int product) {
     if (product < 0 || product >= NUM_PRODUCTS)
         product = m_activeProduct;
-    gpu::resetColorTable(product);
+    m_renderer->resetColorTable(product);
     m_colorTableLabels[product].clear();
     m_colorTableStatus = std::string("Reset ") + PRODUCT_INFO[product].name + " to built-in palette";
     invalidateFrameCache(true);
@@ -1025,8 +1030,7 @@ void App::invalidateFrameCache(bool freeMemory) {
     if (freeMemory) {
         for (auto& frame : m_cachedFrames) {
             if (frame) {
-                cudaFree(frame);
-                frame = nullptr;
+                frame = nil;
             }
         }
     }
@@ -1043,12 +1047,9 @@ void App::ensureCrossSectionBuffer(int width, int height) {
         return;
     }
 
-    if (m_d_xsOutput) {
-        cudaFree(m_d_xsOutput);
-        m_d_xsOutput = nullptr;
-    }
+    m_d_xsOutput = nil;
 
-    CUDA_CHECK(cudaMalloc(&m_d_xsOutput, (size_t)width * height * sizeof(uint32_t)));
+    m_d_xsOutput = [m_renderer->getDevice() newBufferWithLength:(size_t)width * height * sizeof(uint32_t) options:MTLResourceStorageModeShared];
     m_xsAllocWidth = width;
     m_xsAllocHeight = height;
 }
@@ -1063,8 +1064,8 @@ void App::rebuildVolumeForCurrentSelection() {
         if (ns <= 0) return;
 
         std::vector<GpuStationInfo> sweepInfos(ns);
-        std::vector<const float*> azPtrs(ns);
-        std::vector<const uint16_t*> gatePtrs(ns);
+        std::vector<id<MTLBuffer> __unsafe_unretained> azPtrs(ns);
+        std::vector<id<MTLBuffer> __unsafe_unretained> gatePtrs(ns);
 
         int builtSweeps = 0;
         for (int s = 0; s < ns && s < 32; s++) {
@@ -1088,24 +1089,24 @@ void App::rebuildVolumeForCurrentSelection() {
                 info.offset[p] = pd.offset;
             }
 
-            gpu::allocateStation(slot, info);
+            m_renderer->allocateStation(slot, info);
             const uint16_t* gp[NUM_PRODUCTS] = {};
             for (int p = 0; p < NUM_PRODUCTS; p++) {
                 if (pc.products[p].has_data && !pc.products[p].gates.empty())
                     gp[p] = pc.products[p].gates.data();
             }
-            gpu::uploadStationData(slot, info, pc.azimuths.data(), gp);
-            gpu::syncStation(slot);
+            m_renderer->uploadStationData(slot, info, pc.azimuths.data(), gp);
+            m_renderer->syncStation(slot);
 
             sweepInfos[builtSweeps] = info;
-            azPtrs[builtSweeps] = gpu::getStationAzimuths(slot);
-            gatePtrs[builtSweeps] = gpu::getStationGates(slot, m_activeProduct);
+            azPtrs[builtSweeps] = m_renderer->getStationAzimuths(slot);
+            gatePtrs[builtSweeps] = m_renderer->getStationGates(slot, m_activeProduct);
             builtSweeps++;
         }
 
         if (builtSweeps <= 0) return;
 
-        gpu::buildVolume(stationSlot, m_activeProduct,
+        m_renderer->buildVolume(stationSlot, m_activeProduct,
                          sweepInfos.data(), builtSweeps,
                          azPtrs.data(), gatePtrs.data());
         m_volumeBuilt = true;
@@ -1192,7 +1193,7 @@ void App::uploadStation(int stationIdx) {
     // Filter sweeps by active product - only show tilts that have this product
     int productTilts = countProductSweeps(st.precomputed, m_activeProduct);
     if (productTilts <= 0) {
-        gpu::freeStation(stationIdx);
+        m_renderer->freeStation(stationIdx);
         st.gpuInfo = {};
         st.uploaded = false;
         st.uploaded_product = -1;
@@ -1234,7 +1235,7 @@ void App::uploadStation(int stationIdx) {
         info.offset[p] = pd.offset;
     }
 
-    gpu::allocateStation(stationIdx, info);
+    m_renderer->allocateStation(stationIdx, info);
 
     // Upload precomputed data (fast - just memcpy, no transposition)
     const uint16_t* gatePtrs[NUM_PRODUCTS] = {};
@@ -1243,7 +1244,7 @@ void App::uploadStation(int stationIdx) {
             gatePtrs[p] = pc.products[p].gates.data();
     }
 
-    gpu::uploadStationData(stationIdx, info, pc.azimuths.data(), gatePtrs);
+    m_renderer->uploadStationData(stationIdx, info, pc.azimuths.data(), gatePtrs);
 
     st.gpuInfo = info;
     st.uploaded_product = m_activeProduct;
@@ -1256,6 +1257,17 @@ void App::uploadStation(int stationIdx) {
         printf("GPU upload [%d/%d]: %s (%d radials, elev %.1f, %d sweeps)\n",
                loaded, m_stationsTotal, st.icao.c_str(),
                info.num_radials, info.elevation_angle, (int)st.precomputed.size());
+        // Auto-select first uploaded station so user sees data immediately
+        if (m_activeStationIdx < 0) {
+            m_activeStationIdx = stationIdx;
+            m_activeTiltAngle = pc.elevation_angle;
+            // Center viewport on this station and zoom in to see radar
+            m_viewport.center_lat = info.lat;
+            m_viewport.center_lon = info.lon;
+            m_viewport.zoom = 180.0;  // zoomed in enough to see single station
+            printf("Auto-selected station: %s (centered at %.2f, %.2f)\n",
+                   st.icao.c_str(), info.lat, info.lon);
+        }
     }
     m_gridDirty = true;
 }
@@ -1271,7 +1283,7 @@ void App::buildSpatialGrid() {
             infos[i] = m_stations[i].gpuInfo;
     }
 
-    gpu::buildSpatialGridGpu(infos.data(), (int)infos.size(), m_spatialGrid.get());
+    m_renderer->buildSpatialGridGpu(infos.data(), (int)infos.size(), m_spatialGrid.get());
     m_gridDirty = false;
 }
 
@@ -1404,18 +1416,17 @@ void App::render() {
 
         if (m_mode3D && m_volumeBuilt) {
             // 3D volumetric ray march
-            gpu::renderVolume(m_camera, gpuVp.width, gpuVp.height,
+            m_renderer->renderVolume(m_camera, gpuVp.width, gpuVp.height,
                               m_activeProduct, activeThreshold,
                               m_d_compositeOutput);
         } else if (m_historicMode) {
             int cf = m_historic.currentFrame();
             if (hasCachedFrame(cf, gpuVp.width, gpuVp.height)) {
                 // Use pre-baked cached frame (zero render cost)
-                CUDA_CHECK(cudaMemcpy(m_d_compositeOutput, m_cachedFrames[cf],
-                                      (size_t)gpuVp.width * gpuVp.height * sizeof(uint32_t),
-                                      cudaMemcpyDeviceToDevice));
+                size_t sz = (size_t)gpuVp.width * gpuVp.height * sizeof(uint32_t);
+                memcpy(m_d_compositeOutput.contents, m_cachedFrames[cf].contents, sz);
             } else {
-                gpu::renderSingleStation(gpuVp, 0,
+                m_renderer->renderSingleStation(gpuVp, 0,
                                          m_activeProduct, activeThreshold,
                                          m_d_compositeOutput, srvSpd, srvDir);
                 // Cache this rendered frame for instant replay
@@ -1430,7 +1441,7 @@ void App::render() {
                 for (int i = 0; i < (int)m_stations.size(); i++)
                     gpuInfos[i] = m_stations[i].gpuInfo;
             }
-            gpu::renderNative(gpuVp, gpuInfos.data(), (int)m_stations.size(),
+            m_renderer->renderNative(gpuVp, gpuInfos.data(), (int)m_stations.size(),
                               *m_spatialGrid, m_activeProduct, activeThreshold,
                               m_d_compositeOutput);
         } else if (m_activeStationIdx >= 0) {
@@ -1443,12 +1454,12 @@ void App::render() {
             if (needsUpload) {
                 uploadStation(m_activeStationIdx);
             }
-            gpu::forwardRenderStation(gpuVp, m_activeStationIdx,
+            m_renderer->forwardRenderStation(gpuVp, m_activeStationIdx,
                                       m_activeProduct, activeThreshold,
                                       m_d_compositeOutput, srvSpd, srvDir);
         } else {
-            CUDA_CHECK(cudaMemset(m_d_compositeOutput, 0x0F,
-                        (size_t)m_viewport.width * m_viewport.height * sizeof(uint32_t)));
+            memset(m_d_compositeOutput.contents, 0x0F,
+                   (size_t)m_viewport.width * m_viewport.height * sizeof(uint32_t));
         }
         // Cross-section: render to separate texture for floating panel
         // In historic mode, use slot 0's data; otherwise use active station
@@ -1464,35 +1475,65 @@ void App::render() {
             m_xsHeight = gpuVp.height / 3;
             if (m_xsHeight < 200) m_xsHeight = 200;
 
-            // Ensure cross-section GPU buffer and GL texture exist
+            // Ensure cross-section GPU buffer and Metal texture exist
             ensureCrossSectionBuffer(m_xsWidth, m_xsHeight);
             m_xsTex.resize(m_xsWidth, m_xsHeight);
 
-            gpu::renderCrossSection(
+            m_renderer->renderCrossSection(
                 m_activeStationIdx, m_activeProduct, activeThreshold,
                 m_xsStartLat, m_xsStartLon, m_xsEndLat, m_xsEndLon,
                 stInfo.lat, stInfo.lon,
                 m_xsWidth, m_xsHeight, m_d_xsOutput);
 
-            // Copy to its own GL texture
-            m_xsTex.updateFromDevice(m_d_xsOutput, m_xsWidth, m_xsHeight);
+            // Copy to its own Metal texture
+            m_xsTex.updateFromBuffer(m_d_xsOutput, m_xsWidth, m_xsHeight,
+                                     m_renderer->getQueue());
         }
 
-        CUDA_CHECK(cudaDeviceSynchronize());
-        m_outputTex.updateFromDevice(m_d_compositeOutput,
-                                      m_viewport.width, m_viewport.height);
+        // Metal command buffer synchronization is handled internally by the renderer
+        m_outputTex.updateFromBuffer(m_d_compositeOutput,
+                                      m_viewport.width, m_viewport.height,
+                                      m_renderer->getQueue());
     }
 }
 
 void App::onScroll(double xoff, double yoff) {
     invalidateFrameCache(true);
     if (m_mode3D) {
-        m_camera.distance *= (yoff > 0) ? 0.9f : 1.1f;
+        // 3D: scroll orbits camera
+        m_camera.orbit_angle += (float)xoff * 2.0f;
+        m_camera.tilt_angle -= (float)yoff * 2.0f;
+        m_camera.tilt_angle = std::max(5.0f, std::min(85.0f, m_camera.tilt_angle));
+    } else {
+        // 2D: two-finger scroll = PAN (like Apple Maps)
+        m_viewport.center_lon -= xoff / m_viewport.zoom;
+        m_viewport.center_lat += yoff / m_viewport.zoom;
+    }
+}
+
+void App::onMagnify(double magnification) {
+    // Pinch-to-zoom anchored to cursor position
+    invalidateFrameCache(true);
+    if (m_mode3D) {
+        m_camera.distance *= (1.0f - (float)magnification);
         m_camera.distance = std::max(50.0f, std::min(1500.0f, m_camera.distance));
     } else {
-        double factor = (yoff > 0) ? 1.15 : 1.0 / 1.15;
-        m_viewport.zoom *= factor;
-        m_viewport.zoom = std::max(1.0, std::min(m_viewport.zoom, 2000.0));
+        // Lat/lon under cursor before zoom
+        double cursorLon = m_viewport.center_lon + (m_mouseLon - m_viewport.center_lon);
+        double cursorLat = m_viewport.center_lat + (m_mouseLat - m_viewport.center_lat);
+
+        double factor = 1.0 + magnification;
+        double newZoom = m_viewport.zoom * factor;
+        newZoom = std::max(1.0, std::min(newZoom, 2000.0));
+
+        // Shift center so the cursor lat/lon stays in the same screen position
+        // Before: screenX = (cursorLon - center_lon) * oldZoom + w/2
+        // After:  screenX = (cursorLon - newCenter_lon) * newZoom + w/2
+        // Set equal: newCenter = cursorLon - (cursorLon - center_lon) * oldZoom / newZoom
+        double ratio = m_viewport.zoom / newZoom;
+        m_viewport.center_lon = cursorLon - (cursorLon - m_viewport.center_lon) * ratio;
+        m_viewport.center_lat = cursorLat - (cursorLat - m_viewport.center_lat) * ratio;
+        m_viewport.zoom = newZoom;
     }
 }
 
@@ -1603,8 +1644,7 @@ void App::onResize(int w, int h) {
     m_viewport.height = h;
 
     // Resize compositor output
-    if (m_d_compositeOutput) cudaFree(m_d_compositeOutput);
-    CUDA_CHECK(cudaMalloc(&m_d_compositeOutput, (size_t)w * h * sizeof(uint32_t)));
+    m_d_compositeOutput = [m_renderer->getDevice() newBufferWithLength:(size_t)w * h * sizeof(uint32_t) options:MTLResourceStorageModeShared];
 
     ensureCrossSectionBuffer(w, std::max(200, h / 3));
     invalidateFrameCache(true);
@@ -1661,7 +1701,7 @@ void App::setTilt(int t) {
             uploadStation(i);
         }
         for (int i = 0; i < (int)m_stations.size(); i++) {
-            gpu::syncStation(i);
+            m_renderer->syncStation(i);
         }
     }
     if (m_crossSection || m_mode3D)
@@ -1714,46 +1754,13 @@ void App::onMiddleDrag(double mx, double my) {
 }
 
 void App::toggleCrossSection() {
-    m_crossSection = !m_crossSection;
-    if (m_crossSection) {
-        m_mode3D = false;
-
-        // Position cross-section through the active station
-        float slat = 0, slon = 0;
-        if (m_historicMode) {
-            auto* fr = m_historic.frame(m_historic.currentFrame());
-            if (fr && fr->ready) { slat = fr->station_lat; slon = fr->station_lon; }
-        } else if (m_activeStationIdx >= 0) {
-            std::lock_guard<std::mutex> lock(m_stationMutex);
-            slat = m_stations[m_activeStationIdx].gpuInfo.lat;
-            slon = m_stations[m_activeStationIdx].gpuInfo.lon;
-        }
-        if (slat != 0) {
-            m_xsStartLat = slat - 1.5f;
-            m_xsStartLon = slon - 2.0f;
-            m_xsEndLat = slat + 1.5f;
-            m_xsEndLon = slon + 2.0f;
-        }
-
-        ensureCrossSectionBuffer(m_windowWidth, std::max(200, m_windowHeight / 3));
-
-        if (m_historicMode) {
-            // Force re-upload of current historic frame, which will build the volume
-            m_lastHistoricFrame = -1;
-        } else {
-            // Build volume from live station data
-            rebuildVolumeForCurrentSelection();
-        }
-    }
+    // Cross-section not yet available in Metal port
+    printf("Cross-section mode not yet available in Metal port\n");
 }
 
 void App::toggle3D() {
-    m_mode3D = !m_mode3D;
-    m_showAll = false;
-    if (m_mode3D) {
-        m_camera = {32.0f, 24.0f, 440.0f, 54.0f};
-        rebuildVolumeForCurrentSelection();
-    }
+    // 3D volume rendering not yet available in Metal port
+    printf("3D mode not yet available in Metal port\n");
 }
 
 void App::toggleSRV() {
@@ -1846,7 +1853,7 @@ void App::uploadHistoricFrame(int frameIdx) {
     // Filter by active product
     int productTilts = countProductSweeps(fr->sweeps, m_activeProduct);
     if (productTilts <= 0) {
-        gpu::freeStation(slot);
+        m_renderer->freeStation(slot);
         m_volumeBuilt = false;
         m_volumeStation = -1;
         return;
@@ -1875,13 +1882,13 @@ void App::uploadHistoricFrame(int frameIdx) {
         info.offset[p] = pd.offset;
     }
 
-    gpu::allocateStation(slot, info);
+    m_renderer->allocateStation(slot, info);
     const uint16_t* gatePtrs[NUM_PRODUCTS] = {};
     for (int p = 0; p < NUM_PRODUCTS; p++)
         if (pc.products[p].has_data && !pc.products[p].gates.empty())
             gatePtrs[p] = pc.products[p].gates.data();
-    gpu::uploadStationData(slot, info, pc.azimuths.data(), gatePtrs);
-    gpu::syncStation(slot);
+    m_renderer->uploadStationData(slot, info, pc.azimuths.data(), gatePtrs);
+    m_renderer->syncStation(slot);
 
     // Update station state for rendering
     if (m_stations.size() > 0) {
@@ -1979,7 +1986,7 @@ void App::loadMarch302025Snapshot(bool lowestSweepOnly) {
     startDownloadsForTimestamp(2025, 3, 30, 21, 0);
 }
 
-// ── Detection computation (TDS, Hail, Mesocyclone) ──────────
+// -- Detection computation (TDS, Hail, Mesocyclone) ----------
 
 void App::computeDetection(int stationIdx) {
     auto& st = m_stations[stationIdx];
@@ -2004,7 +2011,7 @@ void App::computeDetection(int stationIdx) {
         if (pc.products[PROD_VEL].has_data && velSweep < 0) velSweep = s;
     }
 
-    // ── TDS: CC < 0.80, REF > 35 dBZ, |ZDR| < 1.0 ──
+    // -- TDS: CC < 0.80, REF > 35 dBZ, |ZDR| < 1.0 --
     if (ccSweep >= 0 && zdrSweep >= 0 && refSweep >= 0) {
         auto& ccPc = st.precomputed[ccSweep];
         auto& zdrPc = st.precomputed[zdrSweep];
@@ -2066,7 +2073,7 @@ void App::computeDetection(int stationIdx) {
         }
     }
 
-    // ── Hail: HDR = Z - (19*ZDR + 27), mark where HDR > 0 ──
+    // -- Hail: HDR = Z - (19*ZDR + 27), mark where HDR > 0 --
     if (refSweep >= 0 && zdrSweep >= 0) {
         auto& refPc = st.precomputed[refSweep];
         auto& zdrPc = st.precomputed[zdrSweep];
@@ -2123,7 +2130,7 @@ void App::computeDetection(int stationIdx) {
         }
     }
 
-    // ── Mesocyclone: azimuthal shear in velocity data ──
+    // -- Mesocyclone: azimuthal shear in velocity data --
     if (velSweep >= 0) {
         auto& velPc = st.precomputed[velSweep];
         auto& velPd = velPc.products[PROD_VEL];
@@ -2223,7 +2230,7 @@ void App::computeDetection(int stationIdx) {
            st.icao.c_str(), (int)det.tds.size(), (int)det.hail.size(), (int)det.meso.size());
 }
 
-// ── Velocity dealiasing ─────────────────────────────────────
+// -- Velocity dealiasing -----------------------------------------
 // Simple spatial-consistency dealiasing: if a gate's velocity jumps by
 // more than Vn (Nyquist) from its neighbors, unfold it.
 
@@ -2293,7 +2300,7 @@ void App::dealias(int stationIdx) {
     }
 }
 
-// ── All-tilt VRAM cache ─────────────────────────────────────
+// -- All-tilt VRAM cache -----------------------------------------
 // Upload every sweep's data for all products to GPU. Tilt switching
 // becomes a pointer swap (zero re-upload).
 
@@ -2318,9 +2325,9 @@ void App::switchTiltCached(int stationIdx, int newTilt) {
     uploadStation(stationIdx);
 }
 
-// ── Pre-baked animation frame cache ─────────────────────────
+// -- Pre-baked animation frame cache -----------------------------
 
-void App::cacheAnimFrame(int frameIdx, const uint32_t* d_src, int w, int h) {
+void App::cacheAnimFrame(int frameIdx, id<MTLBuffer> d_src, int w, int h) {
     if (frameIdx >= MAX_CACHED_FRAMES) return;
     if (w <= 0 || h <= 0) return;
 
@@ -2333,8 +2340,8 @@ void App::cacheAnimFrame(int frameIdx, const uint32_t* d_src, int w, int h) {
     m_cachedFrameHeight = h;
     size_t sz = (size_t)w * h * sizeof(uint32_t);
     if (!m_cachedFrames[frameIdx]) {
-        CUDA_CHECK(cudaMalloc(&m_cachedFrames[frameIdx], sz));
+        m_cachedFrames[frameIdx] = [m_renderer->getDevice() newBufferWithLength:sz options:MTLResourceStorageModeShared];
     }
-    CUDA_CHECK(cudaMemcpy(m_cachedFrames[frameIdx], d_src, sz, cudaMemcpyDeviceToDevice));
+    memcpy(m_cachedFrames[frameIdx].contents, d_src.contents, sz);
     if (frameIdx >= m_cachedFrameCount) m_cachedFrameCount = frameIdx + 1;
 }

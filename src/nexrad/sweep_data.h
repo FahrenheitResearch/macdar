@@ -1,5 +1,5 @@
 #pragma once
-#include "../cuda/cuda_common.cuh"
+#include "../metal/metal_common.h"
 #include <vector>
 #include <cstdint>
 
