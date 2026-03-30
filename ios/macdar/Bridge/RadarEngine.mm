@@ -311,9 +311,9 @@
     @synchronized (self) {
         _mosaicMode = mosaicMode;
         if (_initialized) {
-            if (mosaicMode) {
+            if (mosaicMode && !_app->showAll()) {
                 _app->toggleShowAll();
-            } else if (_app->showAll()) {
+            } else if (!mosaicMode && _app->showAll()) {
                 _app->toggleShowAll();
             }
         }

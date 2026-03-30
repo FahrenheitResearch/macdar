@@ -6,13 +6,9 @@ struct ContentView: View {
     @State private var showSettings = false
 
     var body: some View {
-        ZStack {
-            // Full-screen radar
-            RadarMapView()
-                .ignoresSafeArea()
-
-            // Top controls
-            VStack {
+        RadarMapView()
+            .ignoresSafeArea()
+            .overlay(alignment: .top) {
                 HStack(spacing: 12) {
                     // Station name
                     Button(action: { showStationPicker = true }) {
@@ -50,10 +46,8 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-
-                Spacer()
-
-                // Bottom controls
+            }
+            .overlay(alignment: .bottom) {
                 VStack(spacing: 10) {
                     // Product picker
                     ProductPickerView()
@@ -66,7 +60,6 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 20)
             }
-        }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showStationPicker) {
             StationPickerSheet()

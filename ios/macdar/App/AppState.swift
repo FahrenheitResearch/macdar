@@ -53,12 +53,18 @@ class AppState: ObservableObject {
         engine.mosaicMode = mosaicMode
     }
 
+    private var hasLaunched = false
+
     func suspendRendering() {
         isRendering = false
     }
 
     func resumeRendering() {
         isRendering = true
-        engine.refreshData()
+        if hasLaunched {
+            // Only refresh on actual resume from background, not initial launch
+            // engine.refreshData() -- disabled: use single-station polling instead
+        }
+        hasLaunched = true
     }
 }

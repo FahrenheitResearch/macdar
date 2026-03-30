@@ -672,6 +672,11 @@ void App::queueLiveStationRefresh(int stationIdx, bool force) {
 }
 
 void App::startDownloads() {
+    if (m_singleStationMode && m_activeStationIdx >= 0) {
+        printf("Single-station mode: refreshing %s only\n", m_stations[m_activeStationIdx].icao.c_str());
+        queueLiveStationRefresh(m_activeStationIdx, true);
+        return;
+    }
     int year, month, day;
     getUtcDate(year, month, day);
     printf("Fetching latest data for %04d-%02d-%02d from %d stations...\n",
@@ -1570,9 +1575,11 @@ void App::render() {
         }
 
         // Metal command buffer synchronization is handled internally by the renderer
-        m_outputTex.updateFromBuffer(m_d_compositeOutput,
-                                      m_viewport.width, m_viewport.height,
-                                      m_renderer->getQueue());
+        if (!m_singleStationMode) {
+            m_outputTex.updateFromBuffer(m_d_compositeOutput,
+                                          m_viewport.width, m_viewport.height,
+                                          m_renderer->getQueue());
+        }
     }
 }
 
@@ -2007,6 +2014,11 @@ void App::refreshData() {
             m_snapshotLowestSweepOnly = false;
             m_snapshotLabel.clear();
             m_snapshotTimestampIso.clear();
+        }
+        if (m_singleStationMode) {
+            // iOS: just refresh active station, don't reset everything
+            queueLiveStationRefresh(m_activeStationIdx, true);
+            return;
         }
         resetStationsForReload();
         startDownloads();

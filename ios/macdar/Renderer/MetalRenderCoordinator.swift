@@ -15,6 +15,7 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
     private var engineInitialized = false
 
     var isRendering = true
+    private var lastSyncTime: CFTimeInterval = 0
 
     init(engine: RadarEngine, device: MTLDevice, appState: AppState) {
         self.engine = engine
@@ -142,7 +143,13 @@ class MetalRenderCoordinator: NSObject, MTKViewDelegate {
         commandBuffer.present(drawable)
         commandBuffer.commit()
 
-        // Sync UI state periodically
-        appState?.syncFromEngine()
+        // Sync UI state periodically (throttled, on main thread)
+        let now = CACurrentMediaTime()
+        if now - lastSyncTime > 0.3 {
+            lastSyncTime = now
+            DispatchQueue.main.async { [weak self] in
+                self?.appState?.syncFromEngine()
+            }
+        }
     }
 }
