@@ -108,7 +108,7 @@ public:
     std::string activeStationName() const;
     void selectStation(int idx, bool centerView = false, double zoom = -1.0);
     bool showAll() const { return m_showAll; }
-    void toggleShowAll() { m_showAll = !m_showAll; m_mode3D = false; }
+    void toggleShowAll() { /* disabled — not yet stable on Metal */ }
     bool mode3D() const { return m_mode3D; }
     void toggle3D();
     void toggleCrossSection();

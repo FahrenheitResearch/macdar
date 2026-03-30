@@ -490,18 +490,6 @@ void render(App& app) {
     if (ImGui::Checkbox("Auto Track Nearest Site", &autoTrack))
         app.setAutoTrackStation(autoTrack);
 
-    if (ImGui::Button(app.mode3D() ? "Exit 3D (V)" : "3D Volume (V)", ImVec2(210, 24)))
-        app.toggle3D();
-    if (ImGui::Button(app.crossSection() ? "Close Cross Section (X)" : "Cross Section (X)", ImVec2(210, 24)))
-        app.toggleCrossSection();
-
-    ImGui::Separator();
-
-    // Show All toggle
-    bool showAll = app.showAll();
-    if (ImGui::Button(showAll ? "Single Station" : "Show All (A)", ImVec2(210, 24)))
-        app.toggleShowAll();
-
     ImGui::Separator();
     if (ImGui::Button("Refresh Data", ImVec2(210, 24)))
         app.refreshData();
@@ -1107,9 +1095,7 @@ void render(App& app) {
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))    app.nextTilt();
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))  app.prevTilt();
         // V = 3D volume, X = cross-section, A = toggle show all
-        if (ImGui::IsKeyPressed(ImGuiKey_V)) app.toggle3D();
-        if (ImGui::IsKeyPressed(ImGuiKey_X)) app.toggleCrossSection();
-        if (ImGui::IsKeyPressed(ImGuiKey_A)) app.toggleShowAll();
+        // 3D, cross-section, show-all disabled in Metal port
         if (ImGui::IsKeyPressed(ImGuiKey_R)) app.refreshData();
         if (ImGui::IsKeyPressed(ImGuiKey_S)) app.toggleSRV();
         if (ImGui::IsKeyPressed(ImGuiKey_Home)) resetConusView(app);

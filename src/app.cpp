@@ -376,11 +376,13 @@ bool App::init(int windowWidth, int windowHeight) {
     m_d_compositeOutput = [m_renderer->getDevice() newBufferWithLength:outSize options:MTLResourceStorageModeShared];
     memset(m_d_compositeOutput.contents, 0, outSize);
 
-    // Create Metal texture for display
+    // Create Metal textures for display
     if (!m_outputTex.init(windowWidth, windowHeight, m_renderer->getDevice())) {
         fprintf(stderr, "Failed to create output texture\n");
         return false;
     }
+    // Cross-section texture (small initial size, resized on demand)
+    m_xsTex.init(windowWidth, std::max(200, windowHeight / 3), m_renderer->getDevice());
 
     // Set up viewport centered on CONUS
     m_viewport.center_lat = 39.0;
@@ -433,11 +435,12 @@ bool App::init(int windowWidth, int windowHeight, id<MTLDevice> device) {
     m_d_compositeOutput = [m_renderer->getDevice() newBufferWithLength:outSize options:MTLResourceStorageModeShared];
     memset(m_d_compositeOutput.contents, 0, outSize);
 
-    // Create Metal texture for display
+    // Create Metal textures for display
     if (!m_outputTex.init(windowWidth, windowHeight, m_renderer->getDevice())) {
         fprintf(stderr, "Failed to create output texture\n");
         return false;
     }
+    m_xsTex.init(windowWidth, std::max(200, windowHeight / 3), m_renderer->getDevice());
 
     // Set up viewport centered on CONUS
     m_viewport.center_lat = 39.0;
@@ -1577,6 +1580,9 @@ void App::render() {
                 stInfo.lat, stInfo.lon,
                 m_xsWidth, m_xsHeight, m_d_xsOutput);
 
+            // Wait for GPU to finish cross-section render before copying
+            m_renderer->waitForGpu();
+
             // Copy to its own Metal texture
             m_xsTex.updateFromBuffer(m_d_xsOutput, m_xsWidth, m_xsHeight,
                                      m_renderer->getQueue());
@@ -1916,34 +1922,11 @@ void App::onMiddleDrag(double mx, double my) {
 }
 
 void App::toggleCrossSection() {
-    m_crossSection = !m_crossSection;
-    invalidateFrameCache(true);
-    if (m_crossSection && m_activeStationIdx >= 0) {
-        // Set default cross-section line through station
-        std::lock_guard<std::mutex> lock(m_stationMutex);
-        if (m_activeStationIdx < (int)m_stations.size()) {
-            float sLat = m_stations[m_activeStationIdx].gpuInfo.lat;
-            float sLon = m_stations[m_activeStationIdx].gpuInfo.lon;
-            m_xsStartLat = sLat - 1.5f;
-            m_xsStartLon = sLon - 1.5f;
-            m_xsEndLat = sLat + 1.5f;
-            m_xsEndLon = sLon + 1.5f;
-        }
-        rebuildVolumeForCurrentSelection();
-    }
-    m_needsRerender = true;
-    printf("Cross-section: %s\n", m_crossSection ? "ON" : "OFF");
+    // Disabled in Metal port — not yet stable
 }
 
 void App::toggle3D() {
-    m_mode3D = !m_mode3D;
-    m_showAll = false;
-    invalidateFrameCache(true);
-    if (m_mode3D && m_activeStationIdx >= 0) {
-        rebuildVolumeForCurrentSelection();
-    }
-    m_needsRerender = true;
-    printf("3D mode: %s\n", m_mode3D ? "ON" : "OFF");
+    // Disabled in Metal port — not yet stable
 }
 
 void App::toggleSRV() {
