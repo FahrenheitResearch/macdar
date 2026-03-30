@@ -64,6 +64,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
+# Ad-hoc code sign (avoids "damaged" Gatekeeper error)
+codesign --force --deep -s - "$APP"
+
 # Create ZIP for distribution
 ZIP="macdar-macos.zip"
 rm -f "$ZIP"

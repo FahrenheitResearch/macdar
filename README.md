@@ -21,7 +21,11 @@ GPU-accelerated NEXRAD weather radar for Mac and iPhone. Metal compute pipeline 
 
 Grab `macdar-macos.zip` from [Releases](https://github.com/FahrenheitResearch/macdar/releases), unzip, and double-click `macdar.app`.
 
-> First launch: right-click → Open (macOS Gatekeeper blocks unsigned apps on first run).
+> **First launch:** If macOS says the app is "damaged", open Terminal and run:
+> ```bash
+> xattr -cr macdar.app
+> ```
+> Then double-click again. This is normal for apps not distributed through the App Store.
 
 ## Build from Source (macOS)
 
