@@ -145,6 +145,19 @@ bool MetalRenderer::init() {
         NSLog(@"MetalRenderer: No Metal device available");
         return false;
     }
+    return initCommon();
+}
+
+bool MetalRenderer::init(id<MTLDevice> externalDevice) {
+    if (!externalDevice) {
+        NSLog(@"MetalRenderer: nil external device");
+        return false;
+    }
+    _device = externalDevice;
+    return initCommon();
+}
+
+bool MetalRenderer::initCommon() {
     _commandQueue = [_device newCommandQueue];
 
     NSLog(@"Metal Device: %@ (recommended max working set: %.1f GB)",

@@ -85,6 +85,10 @@ public:
 
     // Initialize GPU, start downloads
     bool init(int windowWidth, int windowHeight);
+#ifdef __OBJC__
+    bool init(int windowWidth, int windowHeight, id<MTLDevice> device);
+    id<MTLBuffer> getOutputBuffer() const { return m_d_compositeOutput; }
+#endif
 
     // Main update loop (called each frame)
     void update(float dt);

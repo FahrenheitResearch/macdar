@@ -411,6 +411,63 @@ bool App::init(int windowWidth, int windowHeight) {
     return true;
 }
 
+bool App::init(int windowWidth, int windowHeight, id<MTLDevice> device) {
+    m_windowWidth = windowWidth;
+    m_windowHeight = windowHeight;
+
+    // Initialize Metal renderer with external device
+    m_renderer = std::make_unique<MetalRenderer>();
+    if (!m_renderer->init(device)) {
+        fprintf(stderr, "Failed to initialize Metal renderer with external device\n");
+        return false;
+    }
+
+    // Allocate compositor output buffer
+    size_t outSize = (size_t)windowWidth * windowHeight * sizeof(uint32_t);
+    m_d_compositeOutput = [m_renderer->getDevice() newBufferWithLength:outSize options:MTLResourceStorageModeShared];
+    memset(m_d_compositeOutput.contents, 0, outSize);
+
+    // Create Metal texture for display
+    if (!m_outputTex.init(windowWidth, windowHeight, m_renderer->getDevice())) {
+        fprintf(stderr, "Failed to create output texture\n");
+        return false;
+    }
+
+    // Set up viewport centered on CONUS
+    m_viewport.center_lat = 39.0;
+    m_viewport.center_lon = -98.0;
+    m_viewport.zoom = 28.0;
+    m_viewport.width = windowWidth;
+    m_viewport.height = windowHeight;
+
+    // Initialize station states
+    m_stationsTotal = NUM_NEXRAD_STATIONS;
+    m_stations.resize(m_stationsTotal);
+    for (int i = 0; i < m_stationsTotal; i++) {
+        auto& s = m_stations[i];
+        s.index = i;
+        s.icao = NEXRAD_STATIONS[i].icao;
+        s.lat = NEXRAD_STATIONS[i].lat;
+        s.lon = NEXRAD_STATIONS[i].lon;
+    }
+
+    // Create downloader with 12 concurrent threads (reduced for iOS)
+    m_downloader = std::make_unique<Downloader>(12);
+
+    // Start downloading all stations
+    startDownloads();
+
+    m_renderer->initVolume();
+    m_warnings.startPolling();
+    m_lastRefresh = std::chrono::steady_clock::now();
+    m_lastLivePollSweep = m_lastRefresh;
+
+    printf("App initialized (external device): %d stations, viewport %dx%d\n",
+           m_stationsTotal, windowWidth, windowHeight);
+    fflush(stderr);
+    return true;
+}
+
 bool App::isCurrentDownloadGeneration(uint64_t generation) const {
     return generation == m_downloadGeneration.load();
 }

@@ -88,6 +88,7 @@ public:
 
     // Initialize Metal device, command queue, pipeline states
     bool init();
+    bool init(id<MTLDevice> externalDevice);  // use provided device (iOS)
     void shutdown();
 
     // Color tables
@@ -165,6 +166,7 @@ public:
     }
 
 private:
+    bool initCommon();  // shared init logic after device is set
     void loadShaders();
     void buildColorTexture(int product, const uint32_t* table);
     void buildDefaultColorTables();
